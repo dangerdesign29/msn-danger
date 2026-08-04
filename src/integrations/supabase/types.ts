@@ -38,35 +38,120 @@ export type Database = {
         }
         Relationships: []
       }
+      grupo_membros: {
+        Row: {
+          entrou_em: string
+          grupo_id: string
+          id: string
+          usuario_id: string
+        }
+        Insert: {
+          entrou_em?: string
+          grupo_id: string
+          id?: string
+          usuario_id: string
+        }
+        Update: {
+          entrou_em?: string
+          grupo_id?: string
+          id?: string
+          usuario_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "grupo_membros_grupo_id_fkey"
+            columns: ["grupo_id"]
+            isOneToOne: false
+            referencedRelation: "grupos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      grupos: {
+        Row: {
+          avatar_url: string | null
+          criado_em: string
+          descricao: string | null
+          dono_id: string
+          id: string
+          nome: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          criado_em?: string
+          descricao?: string | null
+          dono_id: string
+          id?: string
+          nome: string
+        }
+        Update: {
+          avatar_url?: string | null
+          criado_em?: string
+          descricao?: string | null
+          dono_id?: string
+          id?: string
+          nome?: string
+        }
+        Relationships: []
+      }
       mensagens: {
         Row: {
-          destinatario_id: string
+          anexo_nome: string | null
+          anexo_tamanho: number | null
+          anexo_tipo: string | null
+          anexo_url: string | null
+          destinatario_id: string | null
+          entregue_em: string | null
           enviada_em: string
+          grupo_id: string | null
           id: string
           lida: boolean
+          lida_em: string | null
           mensagem: string
           remetente_id: string
           tipo: string
         }
         Insert: {
-          destinatario_id: string
+          anexo_nome?: string | null
+          anexo_tamanho?: number | null
+          anexo_tipo?: string | null
+          anexo_url?: string | null
+          destinatario_id?: string | null
+          entregue_em?: string | null
           enviada_em?: string
+          grupo_id?: string | null
           id?: string
           lida?: boolean
+          lida_em?: string | null
           mensagem: string
           remetente_id: string
           tipo?: string
         }
         Update: {
-          destinatario_id?: string
+          anexo_nome?: string | null
+          anexo_tamanho?: number | null
+          anexo_tipo?: string | null
+          anexo_url?: string | null
+          destinatario_id?: string | null
+          entregue_em?: string | null
           enviada_em?: string
+          grupo_id?: string | null
           id?: string
           lida?: boolean
+          lida_em?: string | null
           mensagem?: string
           remetente_id?: string
           tipo?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "mensagens_grupo_id_fkey"
+            columns: ["grupo_id"]
+            isOneToOne: false
+            referencedRelation: "grupos"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       perfis: {
         Row: {
@@ -77,6 +162,7 @@ export type Database = {
           musica: string | null
           nome: string
           status: string
+          tema: Json | null
         }
         Insert: {
           avatar_url?: string | null
@@ -86,6 +172,7 @@ export type Database = {
           musica?: string | null
           nome?: string
           status?: string
+          tema?: Json | null
         }
         Update: {
           avatar_url?: string | null
@@ -95,6 +182,7 @@ export type Database = {
           musica?: string | null
           nome?: string
           status?: string
+          tema?: Json | null
         }
         Relationships: []
       }
@@ -104,7 +192,25 @@ export type Database = {
     }
     Functions: {
       adicionar_contato: { Args: { _email: string }; Returns: string }
+      adicionar_contato_id: { Args: { _alvo: string }; Returns: string }
+      buscar_usuarios: {
+        Args: { _termo: string }
+        Returns: {
+          avatar_url: string
+          email: string
+          id: string
+          ja_contato: boolean
+          nome: string
+          status: string
+        }[]
+      }
+      compartilha_grupo: { Args: { _outro: string }; Returns: boolean }
+      criar_grupo: {
+        Args: { _membros: string[]; _nome: string }
+        Returns: string
+      }
       eh_meu_contato: { Args: { _outro: string }; Returns: boolean }
+      sou_membro: { Args: { _grupo: string }; Returns: boolean }
     }
     Enums: {
       [_ in never]: never

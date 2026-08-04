@@ -2,20 +2,29 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import buddy from "@/assets/msn-buddy.png";
+import { Anexo } from "@/components/msn/Anexo";
+import { BuscarModal } from "@/components/msn/BuscarModal";
 import { DrawModal } from "@/components/msn/DrawModal";
 import { GamesModal } from "@/components/msn/GamesModal";
+import { ThemeModal } from "@/components/msn/ThemeModal";
+import { WinksModal } from "@/components/msn/WinksModal";
 import { supabase } from "@/integrations/supabase/client";
+import { enviarAnexo } from "@/lib/anexos";
 import {
   EMOTICON_PALETTE,
   STATUS_LABEL,
+  arquivoParaAvatar,
   formatarHora,
   formatarMensagem,
-  arquivoParaAvatar,
   playSound,
   type Contato,
+  type Conversa,
+  type Grupo,
   type Mensagem,
   type Perfil,
 } from "@/lib/msn";
+import { aplicarTema, lerTemaLocal, salvarTemaLocal, TEMA_PADRAO, type Tema } from "@/lib/tema";
+import { acharWink, type Wink } from "@/lib/winks";
 
 export const Route = createFileRoute("/messenger")({
   head: () => ({
@@ -24,48 +33,59 @@ export const Route = createFileRoute("/messenger")({
       {
         name: "description",
         content:
-          "Lista de contatos, status, winks, toques de atenção, rabiscos e emoticons no clássico visual do Windows Live Messenger.",
+          "Converse em tempo real: contatos, grupos, anexos, áudios, winks animados, emoticons e temas personalizáveis no visual clássico do MSN.",
       },
       { property: "og:title", content: "Messenger — Suas conversas | MSN" },
       {
         property: "og:description",
-        content: "Converse em tempo real com o visual e os sons originais do MSN.",
+        content: "Grupos, anexos, winks animados e temas no clássico visual do Windows Live Messenger.",
       },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
   component: Messenger,
 });
 
+const PAGINA = 30;
+
 type Toast = { id: number; titulo: string; texto: string };
-type Prompt = {
-  titulo: string;
-  label: string;
-  valor: string;
-  onOk: (valor: string) => void;
-};
+type Prompt = { titulo: string; label: string; valor: string; onOk: (v: string) => void };
 
 function Messenger() {
   const navigate = useNavigate();
   const [userId, setUserId] = useState<string | null>(null);
   const [perfil, setPerfil] = useState<Perfil | null>(null);
   const [contatos, setContatos] = useState<Contato[]>([]);
+  const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [busca, setBusca] = useState("");
-  const [ativo, setAtivo] = useState<Contato | null>(null);
+  const [ativo, setAtivo] = useState<Conversa | null>(null);
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
+  const [temMais, setTemMais] = useState(false);
+  const [buscaMsg, setBuscaMsg] = useState("");
+  const [buscandoMsg, setBuscandoMsg] = useState(false);
   const [texto, setTexto] = useState("");
   const [emoticons, setEmoticons] = useState(false);
   const [desenho, setDesenho] = useState(false);
   const [jogos, setJogos] = useState(false);
-  const [wink, setWink] = useState(false);
+  const [winksAberto, setWinksAberto] = useState(false);
+  const [buscarAberto, setBuscarAberto] = useState(false);
+  const [temaAberto, setTemaAberto] = useState(false);
+  const [tema, setTema] = useState<Tema>(TEMA_PADRAO);
+  const [winkAtivo, setWinkAtivo] = useState<Wink | null>(null);
   const [tremendo, setTremendo] = useState(false);
+  const [enviandoAnexo, setEnviandoAnexo] = useState(false);
+  const [gravando, setGravando] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [prompt, setPrompt] = useState<Prompt | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; contato: Contato } | null>(null);
 
-  const ativoRef = useRef<Contato | null>(null);
+  const ativoRef = useRef<Conversa | null>(null);
   ativoRef.current = ativo;
   const fimRef = useRef<HTMLDivElement | null>(null);
-  const fileRef = useRef<HTMLInputElement | null>(null);
+  const avatarRef = useRef<HTMLInputElement | null>(null);
+  const anexoRef = useRef<HTMLInputElement | null>(null);
+  const gravadorRef = useRef<MediaRecorder | null>(null);
 
   const notificar = useCallback((titulo: string, textoToast: string) => {
     const id = Date.now() + Math.random();
@@ -79,18 +99,18 @@ function Messenger() {
     setTimeout(() => setTremendo(false), 600);
   }, []);
 
-  const piscar = useCallback(() => {
-    setWink(true);
-    playSound("wink");
-    setTimeout(() => setWink(false), 1000);
+  const tocarWink = useCallback((w: Wink) => {
+    setWinkAtivo(w);
+    playSound(w.som);
+    setTimeout(() => setWinkAtivo(null), 1600);
   }, []);
 
+  // ---------- carregamentos ----------
   const carregarContatos = useCallback(async (uid: string) => {
     const { data: vinculos } = await supabase
       .from("contatos")
       .select("contato_id, apelido")
       .eq("usuario_id", uid);
-
     const ids = (vinculos ?? []).map((v) => v.contato_id);
     if (ids.length === 0) {
       setContatos([]);
@@ -98,7 +118,7 @@ function Messenger() {
     }
     const { data: perfis } = await supabase.from("perfis").select("*").in("id", ids);
     const lista = (perfis ?? []).map((p) => ({
-      ...(p as Perfil),
+      ...(p as unknown as Perfil),
       apelido: vinculos?.find((v) => v.contato_id === p.id)?.apelido ?? null,
     }));
     lista.sort((a, b) => {
@@ -109,46 +129,163 @@ function Messenger() {
     setContatos(lista);
   }, []);
 
-  const carregarMensagens = useCallback(async (uid: string, outro: string) => {
-    const { data } = await supabase
-      .from("mensagens")
-      .select("*")
-      .or(
-        `and(remetente_id.eq.${uid},destinatario_id.eq.${outro}),and(remetente_id.eq.${outro},destinatario_id.eq.${uid})`,
-      )
-      .order("enviada_em", { ascending: true });
-    setMensagens((data ?? []) as Mensagem[]);
+  const carregarGrupos = useCallback(async () => {
+    const { data } = await supabase.from("grupos").select("*").order("criado_em");
+    setGrupos((data ?? []) as unknown as Grupo[]);
   }, []);
 
-  // Sessão + carga inicial
+  const filtroConversa = useCallback((uid: string, c: Conversa) => {
+    if (c.tipo === "grupo") return { coluna: "grupo_id", valor: c.id, uid };
+    return { coluna: "dm", valor: c.id, uid };
+  }, []);
+
+  const consultaBase = useCallback((uid: string, c: Conversa) => {
+    const q = supabase.from("mensagens").select("*");
+    if (c.tipo === "grupo") return q.eq("grupo_id", c.id);
+    return q
+      .is("grupo_id", null)
+      .or(
+        `and(remetente_id.eq.${uid},destinatario_id.eq.${c.id}),and(remetente_id.eq.${c.id},destinatario_id.eq.${uid})`,
+      );
+  }, []);
+
+  const marcarLidas = useCallback(async (uid: string, c: Conversa) => {
+    if (c.tipo !== "dm") return;
+    await supabase
+      .from("mensagens")
+      .update({ lida: true, lida_em: new Date().toISOString() })
+      .eq("destinatario_id", uid)
+      .eq("remetente_id", c.id)
+      .eq("lida", false);
+  }, []);
+
+  const carregarMensagens = useCallback(
+    async (uid: string, c: Conversa) => {
+      const { data } = await consultaBase(uid, c)
+        .order("enviada_em", { ascending: false })
+        .limit(PAGINA);
+      const lista = ((data ?? []) as unknown as Mensagem[]).slice().reverse();
+      setMensagens(lista);
+      setTemMais((data ?? []).length === PAGINA);
+      await marcarLidas(uid, c);
+    },
+    [consultaBase, marcarLidas],
+  );
+
+  async function carregarAntigas() {
+    if (!userId || !ativo || mensagens.length === 0) return;
+    const maisAntiga = mensagens[0]!.enviada_em;
+    const { data } = await consultaBase(userId, ativo)
+      .lt("enviada_em", maisAntiga)
+      .order("enviada_em", { ascending: false })
+      .limit(PAGINA);
+    const lista = ((data ?? []) as unknown as Mensagem[]).slice().reverse();
+    setMensagens((m) => [...lista, ...m]);
+    setTemMais((data ?? []).length === PAGINA);
+  }
+
+  async function buscarNoHistorico(termo: string) {
+    if (!userId || !ativo) return;
+    setBuscaMsg(termo);
+    if (!termo.trim()) {
+      setBuscandoMsg(false);
+      await carregarMensagens(userId, ativo);
+      return;
+    }
+    setBuscandoMsg(true);
+    const { data } = await consultaBase(userId, ativo)
+      .ilike("mensagem", `%${termo.trim()}%`)
+      .order("enviada_em", { ascending: false })
+      .limit(100);
+    setMensagens(((data ?? []) as unknown as Mensagem[]).slice().reverse());
+    setTemMais(false);
+  }
+
+  // ---------- sessão ----------
   useEffect(() => {
-    let ativoEfeito = true;
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (!ativoEfeito) return;
+    let vivo = true;
+    aplicarTema(lerTemaLocal());
+    setTema(lerTemaLocal());
+    void supabase.auth.getSession().then(async ({ data }) => {
+      if (!vivo) return;
       const session = data.session;
       if (!session) {
-        navigate({ to: "/" });
+        void navigate({ to: "/" });
         return;
       }
       const uid = session.user.id;
       setUserId(uid);
-
       const { data: p } = await supabase.from("perfis").select("*").eq("id", uid).maybeSingle();
-      if (p) setPerfil(p as Perfil);
+      if (p) {
+        setPerfil(p as unknown as Perfil);
+        const salvo = (p as { tema?: unknown }).tema as Tema | null;
+        if (salvo && typeof salvo === "object") {
+          const t = { ...TEMA_PADRAO, ...salvo };
+          setTema(t);
+          aplicarTema(t);
+          salvarTemaLocal(t);
+        }
+      }
       await supabase.from("perfis").update({ status: "online" }).eq("id", uid);
       await carregarContatos(uid);
+      await carregarGrupos();
       playSound("login");
     });
     return () => {
-      ativoEfeito = false;
+      vivo = false;
     };
-  }, [navigate, carregarContatos]);
+  }, [navigate, carregarContatos, carregarGrupos]);
 
-  // Tempo real: mensagens recebidas
+  // ---------- tempo real ----------
   useEffect(() => {
     if (!userId) return;
-    const canal = supabase
-      .channel("msn-mensagens")
+
+    const receber = (msg: Mensagem) => {
+      const atual = ativoRef.current;
+      const daConversa =
+        atual &&
+        (atual.tipo === "grupo"
+          ? msg.grupo_id === atual.id
+          : msg.grupo_id === null &&
+            (msg.remetente_id === atual.id || msg.destinatario_id === atual.id));
+
+      if (daConversa) {
+        setMensagens((m) => (m.some((x) => x.id === msg.id) ? m : [...m, msg]));
+        if (atual) void marcarLidas(userId, atual);
+      } else {
+        void supabase
+          .from("mensagens")
+          .update({ entregue_em: new Date().toISOString() })
+          .eq("id", msg.id)
+          .is("entregue_em", null);
+      }
+
+      if (msg.tipo === "nudge") {
+        tremer();
+        notificar("Toque de atenção!", "Alguém te chamou 📳");
+      } else if (msg.tipo === "wink") {
+        const w = acharWink(msg.mensagem);
+        if (w) tocarWink(w);
+        else playSound("wink");
+        notificar("Wink recebido!", w ? `${w.emoji} ${w.frase}` : "Você recebeu um wink ⚡");
+      } else {
+        playSound("message");
+        if (!daConversa) {
+          notificar(
+            "Nova mensagem",
+            msg.tipo === "drawing"
+              ? "🎨 Um rabisco chegou"
+              : msg.anexo_url
+                ? `📎 ${msg.anexo_nome ?? "Anexo"}`
+                : formatarMensagem(msg.mensagem),
+          );
+        }
+      }
+      void carregarContatos(userId);
+    };
+
+    const canalDm = supabase
+      .channel("msn-dm")
       .on(
         "postgres_changes",
         {
@@ -157,70 +294,65 @@ function Messenger() {
           table: "mensagens",
           filter: `destinatario_id=eq.${userId}`,
         },
-        (payload) => {
-          const msg = payload.new as Mensagem;
-          const atual = ativoRef.current;
-          void carregarContatos(userId);
-          if (atual && msg.remetente_id === atual.id) {
-            setMensagens((m) => [...m, msg]);
-          }
-          if (msg.tipo === "nudge") {
-            tremer();
-            notificar("Toque de atenção!", "Alguém te chamou 📳");
-          } else if (msg.tipo === "wink") {
-            piscar();
-            notificar("Wink recebido!", "Alguém te enviou um wink ⚡");
-          } else {
-            playSound("message");
-            if (!atual || msg.remetente_id !== atual.id) {
-              notificar(
-                "Nova mensagem",
-                msg.tipo === "drawing" ? "🎨 Um rabisco chegou" : formatarMensagem(msg.mensagem),
-              );
-            }
-          }
-        },
+        (p) => receber(p.new as Mensagem),
       )
-      .subscribe();
-
-    const canalPerfis = supabase
-      .channel("msn-perfis")
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "perfis" }, () => {
-        void carregarContatos(userId);
-      })
-      .subscribe();
-
-    const canalContatos = supabase
-      .channel("msn-contatos")
       .on(
         "postgres_changes",
         {
-          event: "*",
+          event: "UPDATE",
           schema: "public",
-          table: "contatos",
-          filter: `usuario_id=eq.${userId}`,
+          table: "mensagens",
+          filter: `remetente_id=eq.${userId}`,
         },
-        () => {
-          void carregarContatos(userId);
+        (p) => {
+          const msg = p.new as Mensagem;
+          setMensagens((m) => m.map((x) => (x.id === msg.id ? { ...x, ...msg } : x)));
         },
       )
+      .subscribe();
+
+    const canalGrupos = supabase
+      .channel("msn-grupo-msgs")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "mensagens" },
+        (p) => {
+          const msg = p.new as Mensagem;
+          if (!msg.grupo_id || msg.remetente_id === userId) return;
+          receber(msg);
+        },
+      )
+      .subscribe();
+
+    const canalOutros = supabase
+      .channel("msn-listas")
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "perfis" }, () => {
+        void carregarContatos(userId);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "contatos" }, () => {
+        void carregarContatos(userId);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "grupo_membros" }, () => {
+        void carregarGrupos();
+      })
       .subscribe();
 
     const intervalo = setInterval(() => {
       void carregarContatos(userId);
-    }, 15000);
+      void carregarGrupos();
+    }, 20000);
 
     return () => {
-      void supabase.removeChannel(canal);
-      void supabase.removeChannel(canalPerfis);
-      void supabase.removeChannel(canalContatos);
+      void supabase.removeChannel(canalDm);
+      void supabase.removeChannel(canalGrupos);
+      void supabase.removeChannel(canalOutros);
       clearInterval(intervalo);
     };
-  }, [userId, tremer, piscar, notificar, carregarContatos]);
+  }, [userId, tremer, tocarWink, notificar, carregarContatos, carregarGrupos, marcarLidas]);
 
   useEffect(() => {
-    fimRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [mensagens]);
+    if (!buscandoMsg) fimRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [mensagens, buscandoMsg]);
 
   useEffect(() => {
     if (!menu) return;
@@ -236,40 +368,98 @@ function Messenger() {
       ),
     [contatos, busca],
   );
+  const gruposFiltrados = useMemo(
+    () => grupos.filter((g) => g.nome.toLowerCase().includes(busca.trim().toLowerCase())),
+    [grupos, busca],
+  );
 
-  async function abrirChat(contato: Contato) {
-    setAtivo(contato);
+  // ---------- ações ----------
+  async function abrirConversa(c: Conversa) {
+    setAtivo(c);
     setEmoticons(false);
-    if (userId) await carregarMensagens(userId, contato.id);
+    setBuscaMsg("");
+    setBuscandoMsg(false);
+    if (userId) await carregarMensagens(userId, c);
   }
 
-  async function enviarPara(destino: Contato | null, conteudo: string, tipo: string) {
-    if (!userId || !destino || !conteudo) return;
+  const conversaDoContato = (c: Contato): Conversa => ({
+    tipo: "dm",
+    id: c.id,
+    nome: c.apelido ?? c.nome,
+    avatar: c.avatar_url,
+    status: c.status,
+  });
+
+  async function enviarEm(
+    destino: Conversa | null,
+    conteudo: string,
+    tipo: string,
+    anexo?: { caminho: string; nome: string; tipo: string; tamanho: number },
+  ) {
+    if (!userId || !destino) return;
     const { data } = await supabase
       .from("mensagens")
       .insert({
         remetente_id: userId,
-        destinatario_id: destino.id,
+        destinatario_id: destino.tipo === "dm" ? destino.id : null,
+        grupo_id: destino.tipo === "grupo" ? destino.id : null,
         mensagem: conteudo,
         tipo,
+        anexo_url: anexo?.caminho ?? null,
+        anexo_nome: anexo?.nome ?? null,
+        anexo_tipo: anexo?.tipo ?? null,
+        anexo_tamanho: anexo?.tamanho ?? null,
       })
       .select()
       .maybeSingle();
     if (data && ativoRef.current?.id === destino.id) {
-      setMensagens((m) => [...m, data as Mensagem]);
+      setMensagens((m) => [...m, data as unknown as Mensagem]);
     }
     playSound("send");
-  }
-
-  async function enviar(conteudo: string, tipo: string) {
-    await enviarPara(ativo, conteudo, tipo);
   }
 
   async function enviarTexto() {
     const conteudo = texto.trim();
     if (!conteudo) return;
     setTexto("");
-    await enviar(conteudo, "texto");
+    await enviarEm(ativo, conteudo, "texto");
+  }
+
+  async function enviarArquivo(arquivo: File | Blob, nome?: string) {
+    if (!userId || !ativo) return;
+    setEnviandoAnexo(true);
+    try {
+      const info = await enviarAnexo(userId, arquivo, nome);
+      await enviarEm(ativo, info.nome, "anexo", info);
+    } catch (e) {
+      notificar("Erro no anexo", e instanceof Error ? e.message : "Falha ao enviar arquivo.");
+    } finally {
+      setEnviandoAnexo(false);
+    }
+  }
+
+  async function alternarGravacao() {
+    if (gravando) {
+      gravadorRef.current?.stop();
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const rec = new MediaRecorder(stream);
+      const pedacos: Blob[] = [];
+      rec.ondataavailable = (e) => pedacos.push(e.data);
+      rec.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        setGravando(false);
+        const blob = new Blob(pedacos, { type: rec.mimeType || "audio/webm" });
+        if (blob.size > 0) void enviarArquivo(blob, `audio-${Date.now()}.webm`);
+      };
+      gravadorRef.current = rec;
+      rec.start();
+      setGravando(true);
+    } catch {
+      notificar("Microfone", "Não foi possível acessar o microfone.");
+    }
   }
 
   async function mudarStatus(status: string) {
@@ -293,33 +483,25 @@ function Messenger() {
     }
   }
 
+  async function salvarTema(novo: Tema) {
+    setTema(novo);
+    aplicarTema(novo);
+    salvarTemaLocal(novo);
+    setTemaAberto(false);
+    if (userId) {
+      await supabase
+        .from("perfis")
+        .update({ tema: novo as unknown as never })
+        .eq("id", userId);
+    }
+    notificar("Tema salvo", "Sua aparência foi atualizada.");
+  }
+
   async function sair() {
     if (userId) await supabase.from("perfis").update({ status: "offline" }).eq("id", userId);
     playSound("logout");
     await supabase.auth.signOut();
-    navigate({ to: "/" });
-  }
-
-  function pedirContato() {
-    setPrompt({
-      titulo: "Adicionar contato",
-      label: "Digite o e-mail do contato:",
-      valor: "",
-      onOk: async (email) => {
-        if (!email.trim() || !userId) return;
-        const { data, error } = await supabase.rpc("adicionar_contato", { _email: email.trim() });
-        if (error) {
-          notificar("Erro", "Não foi possível adicionar o contato.");
-          return;
-        }
-        if (data === "nao_encontrado") notificar("Ops", "Nenhum usuário com esse e-mail.");
-        else if (data === "voce_mesmo") notificar("Ops", "Esse é o seu próprio e-mail.");
-        else {
-          notificar("Contato adicionado", "Já pode conversar!");
-          await carregarContatos(userId);
-        }
-      },
-    });
+    void navigate({ to: "/" });
   }
 
   function pedirMusica() {
@@ -365,20 +547,30 @@ function Messenger() {
 
   const avatarDe = (url: string | null | undefined) => url || buddy;
 
+  function selo(m: Mensagem) {
+    if (m.remetente_id !== userId || m.grupo_id) return null;
+    if (m.lida) return <span className="msn-selo lida" title="Lida">✓✓</span>;
+    if (m.entregue_em) return <span className="msn-selo" title="Entregue">✓✓</span>;
+    return <span className="msn-selo" title="Enviada">✓</span>;
+  }
+
   return (
     <div className={`msn-root ${tremendo ? "msn-shaking" : ""}`}>
       <h1 className="sr-only">Windows Live Messenger</h1>
 
+      <input ref={avatarRef} type="file" accept="image/*" className="hidden" onChange={trocarAvatar} />
       <input
-        ref={fileRef}
+        ref={anexoRef}
         type="file"
-        accept="image/*"
         className="hidden"
-        onChange={trocarAvatar}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) void enviarArquivo(f);
+          e.target.value = "";
+        }}
       />
 
       <div className="msn-shell">
-        {/* Painel de contatos */}
         <aside className="msn-contacts">
           <div className="msn-userinfo">
             <img
@@ -388,18 +580,16 @@ function Messenger() {
               height={48}
               className="msn-avatar"
               title="Clique para trocar foto"
-              onClick={() => fileRef.current?.click()}
+              onClick={() => avatarRef.current?.click()}
             />
             <div className="flex-1">
               <div className="msn-username">{perfil?.nome ?? "Carregando..."}</div>
-              {perfil?.musica && (
-                <div className="text-[11px] text-[#666]">🎵 {perfil.musica}</div>
-              )}
+              {perfil?.musica && <div className="text-[11px] text-[#666]">🎵 {perfil.musica}</div>}
               <select
                 className="msn-select mt-1"
                 aria-label="Meu status"
                 value={perfil?.status ?? "online"}
-                onChange={(e) => mudarStatus(e.target.value)}
+                onChange={(e) => void mudarStatus(e.target.value)}
               >
                 {Object.entries(STATUS_LABEL).map(([valor, rotulo]) => (
                   <option key={valor} value={valor}>
@@ -412,37 +602,58 @@ function Messenger() {
 
           <div className="msn-search border-b border-[#e0e0e0] p-2">
             <input
-              placeholder="Buscar contatos..."
-              aria-label="Buscar contatos"
+              placeholder="Filtrar contatos e grupos..."
+              aria-label="Filtrar contatos e grupos"
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
             />
           </div>
 
           <div className="flex-1 overflow-y-auto p-1.5">
+            {gruposFiltrados.length > 0 && (
+              <p className="px-2 py-1 text-[10px] font-bold uppercase text-[#888]">Grupos</p>
+            )}
+            {gruposFiltrados.map((g) => (
+              <button
+                key={g.id}
+                type="button"
+                className={`msn-contact ${ativo?.tipo === "grupo" && ativo.id === g.id ? "active" : ""}`}
+                onClick={() =>
+                  void abrirConversa({
+                    tipo: "grupo",
+                    id: g.id,
+                    nome: g.nome,
+                    avatar: g.avatar_url,
+                    status: "online",
+                  })
+                }
+              >
+                <span className="msn-grupo-icone">👥</span>
+                <span className="min-w-0 flex-1">
+                  <span className="msn-contact-name block truncate">{g.nome}</span>
+                  <span className="msn-contact-status online">grupo</span>
+                </span>
+              </button>
+            ))}
+
+            <p className="px-2 py-1 text-[10px] font-bold uppercase text-[#888]">Contatos</p>
             {filtrados.length === 0 && (
               <p className="p-3 text-center text-[11px] text-[#999]">
-                Nenhum contato ainda. Clique em ➕ Adicionar.
+                Nenhum contato ainda. Clique em 🔎 Encontrar.
               </p>
             )}
             {filtrados.map((c) => (
               <button
                 key={c.id}
                 type="button"
-                className={`msn-contact ${ativo?.id === c.id ? "active" : ""}`}
-                onClick={() => abrirChat(c)}
+                className={`msn-contact ${ativo?.tipo === "dm" && ativo.id === c.id ? "active" : ""}`}
+                onClick={() => void abrirConversa(conversaDoContato(c))}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   setMenu({ x: e.clientX, y: e.clientY, contato: c });
                 }}
               >
-                <img
-                  src={avatarDe(c.avatar_url)}
-                  alt=""
-                  width={36}
-                  height={36}
-                  className="msn-contact-avatar"
-                />
+                <img src={avatarDe(c.avatar_url)} alt="" width={36} height={36} className="msn-contact-avatar" />
                 <span className="min-w-0 flex-1">
                   <span className="msn-contact-name block truncate">{c.apelido ?? c.nome}</span>
                   <span className={`msn-contact-status ${c.status}`}>{c.status}</span>
@@ -455,64 +666,74 @@ function Messenger() {
           </div>
 
           <div className="flex flex-wrap gap-1.5 border-t border-[#d4d4d4] p-2.5">
-            <button type="button" className="msn-btn-small flex-1" onClick={pedirContato}>
-              ➕ Adicionar
+            <button type="button" className="msn-btn-small flex-1" onClick={() => setBuscarAberto(true)}>
+              🔎 Encontrar
+            </button>
+            <button type="button" className="msn-btn-small flex-1" onClick={() => setTemaAberto(true)}>
+              🎨 Tema
             </button>
             <button type="button" className="msn-btn-small flex-1" onClick={pedirMusica}>
               🎵 Música
             </button>
-            <button type="button" className="msn-btn-small flex-1" onClick={sair}>
+            <button type="button" className="msn-btn-small flex-1" onClick={() => void sair()}>
               🚪 Sair
             </button>
           </div>
         </aside>
 
-        {/* Área de chat */}
         <section className="msn-chat">
           {!ativo ? (
             <div className="msn-empty">
-              <img
-                src={buddy}
-                alt="MSN Messenger"
-                width={128}
-                height={128}
-                loading="lazy"
-                className="mb-5 w-32 opacity-50"
-              />
+              <img src={buddy} alt="MSN Messenger" width={128} height={128} loading="lazy" className="mb-5 w-32 opacity-50" />
               <h2 className="text-[16px] font-bold text-[#777]">Windows Live Messenger</h2>
-              <p className="text-[13px]">Selecione um contato para começar a conversar</p>
+              <p className="text-[13px]">Selecione um contato ou grupo para começar</p>
               <p className="mt-2.5 text-[11px] text-[#aaa]">
-                Clique com o botão direito no contato para:
-                <br />⚡ Winks | 📳 Toque de atenção | 🎨 Desenho | 🎮 Jogos
+                ⚡ Winks | 📳 Toque | 🎨 Desenho | 🎮 Jogos | 📎 Anexos | 🎤 Áudio
               </p>
             </div>
           ) : (
             <>
               <div className="msn-chat-header">
-                <img
-                  src={avatarDe(ativo.avatar_url)}
-                  alt=""
-                  width={36}
-                  height={36}
-                  className="msn-contact-avatar"
-                />
-                <div>
-                  <div className="text-[14px] font-bold text-[#333]">
-                    {ativo.apelido ?? ativo.nome}
+                {ativo.tipo === "grupo" ? (
+                  <span className="msn-grupo-icone">👥</span>
+                ) : (
+                  <img src={avatarDe(ativo.avatar)} alt="" width={36} height={36} className="msn-contact-avatar" />
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[14px] font-bold text-[#333]">{ativo.nome}</div>
+                  <div className={`msn-contact-status ${ativo.status}`}>
+                    {ativo.tipo === "grupo" ? "conversa em grupo" : ativo.status}
                   </div>
-                  <div className={`msn-contact-status ${ativo.status}`}>{ativo.status}</div>
                 </div>
+                <input
+                  className="msn-input w-[150px]"
+                  placeholder="Buscar no histórico"
+                  aria-label="Buscar no histórico da conversa"
+                  value={buscaMsg}
+                  onChange={(e) => void buscarNoHistorico(e.target.value)}
+                />
               </div>
 
               <div className="msn-messages">
+                {buscandoMsg && (
+                  <p className="text-center text-[11px] text-[#777]">
+                    {mensagens.length} resultado(s) para “{buscaMsg}”
+                  </p>
+                )}
+                {!buscandoMsg && temMais && (
+                  <button type="button" className="msn-btn-small mx-auto" onClick={() => void carregarAntigas()}>
+                    ↑ Carregar mensagens antigas
+                  </button>
+                )}
                 {mensagens.map((m) => {
                   const meu = m.remetente_id === userId;
+                  const w = m.tipo === "wink" ? acharWink(m.mensagem) : undefined;
                   return (
                     <div key={m.id} className={`msn-msg ${meu ? "sent" : "received"}`}>
                       {m.tipo === "wink" && (
                         <div className="text-center">
-                          <div className="text-[40px]">⚡</div>
-                          <strong>Wink {meu ? "enviado" : "recebido"}!</strong>
+                          <div className={`text-[40px] msn-anim-${w?.anim ?? "zoom"}`}>{w?.emoji ?? "⚡"}</div>
+                          <strong>{w?.frase ?? "Wink!"}</strong>
                         </div>
                       )}
                       {m.tipo === "nudge" && (
@@ -524,16 +745,21 @@ function Messenger() {
                       {m.tipo === "drawing" && (
                         <div className="text-center">
                           <div className="text-[13px]">🎨 Desenho:</div>
-                          <img
-                            src={m.mensagem}
-                            alt="Rabisco"
-                            loading="lazy"
-                            className="mt-1.5 max-w-[200px] border border-[#ccc]"
-                          />
+                          <img src={m.mensagem} alt="Rabisco" loading="lazy" className="mt-1.5 max-w-[200px] border border-[#ccc]" />
                         </div>
                       )}
+                      {m.tipo === "anexo" && m.anexo_url && (
+                        <Anexo
+                          caminho={m.anexo_url}
+                          nome={m.anexo_nome ?? "arquivo"}
+                          tipo={m.anexo_tipo ?? "application/octet-stream"}
+                          tamanho={m.anexo_tamanho}
+                        />
+                      )}
                       {m.tipo === "texto" && <div>{formatarMensagem(m.mensagem)}</div>}
-                      <div className="msn-msg-time">{formatarHora(m.enviada_em)}</div>
+                      <div className="msn-msg-time">
+                        {formatarHora(m.enviada_em)} {selo(m)}
+                      </div>
                     </div>
                   );
                 })}
@@ -541,24 +767,11 @@ function Messenger() {
               </div>
 
               <div className="msn-composer">
-                <div className="mb-1.5 flex gap-1.5">
-                  <button
-                    type="button"
-                    className="msn-tool"
-                    title="Emoticons"
-                    onClick={() => setEmoticons((v) => !v)}
-                  >
+                <div className="mb-1.5 flex flex-wrap gap-1.5">
+                  <button type="button" className="msn-tool" title="Emoticons" onClick={() => setEmoticons((v) => !v)}>
                     😊
                   </button>
-                  <button
-                    type="button"
-                    className="msn-tool"
-                    title="Wink"
-                    onClick={() => {
-                      piscar();
-                      void enviar("Wink!", "wink");
-                    }}
-                  >
+                  <button type="button" className="msn-tool" title="Galeria de winks" onClick={() => setWinksAberto(true)}>
                     ⚡
                   </button>
                   <button
@@ -567,31 +780,39 @@ function Messenger() {
                     title="Toque de atenção"
                     onClick={() => {
                       tremer();
-                      void enviar("Toque de atenção!", "nudge");
+                      void enviarEm(ativo, "Toque de atenção!", "nudge");
                     }}
                   >
                     📳
                   </button>
-                  <button
-                    type="button"
-                    className="msn-tool"
-                    title="Desenho"
-                    onClick={() => setDesenho(true)}
-                  >
+                  <button type="button" className="msn-tool" title="Desenho" onClick={() => setDesenho(true)}>
                     🎨
                   </button>
+                  <button type="button" className="msn-tool" title="Jogos" onClick={() => setJogos(true)}>
+                    🎮
+                  </button>
                   <button
                     type="button"
                     className="msn-tool"
-                    title="Jogos"
-                    onClick={() => setJogos(true)}
+                    title="Enviar arquivo, imagem ou vídeo"
+                    onClick={() => anexoRef.current?.click()}
+                    disabled={enviandoAnexo}
                   >
-                    🎮
+                    📎
                   </button>
+                  <button
+                    type="button"
+                    className={`msn-tool ${gravando ? "msn-gravando" : ""}`}
+                    title={gravando ? "Parar e enviar áudio" : "Gravar áudio"}
+                    onClick={() => void alternarGravacao()}
+                  >
+                    {gravando ? "⏹" : "🎤"}
+                  </button>
+                  {enviandoAnexo && <span className="self-center text-[11px] text-[#555]">Enviando anexo…</span>}
                 </div>
 
                 {emoticons && (
-                  <div className="absolute bottom-[86px] left-2.5 z-50 grid grid-cols-8 gap-1 rounded border border-[#ccc] bg-white p-2.5 shadow-[2px_2px_10px_rgba(0,0,0,0.2)]">
+                  <div className="absolute bottom-[96px] left-2.5 z-50 grid grid-cols-8 gap-1 rounded border border-[#ccc] bg-white p-2.5 shadow-[2px_2px_10px_rgba(0,0,0,0.2)]">
                     {EMOTICON_PALETTE.map((emoji) => (
                       <button
                         key={emoji}
@@ -632,34 +853,45 @@ function Messenger() {
         </section>
       </div>
 
-      {/* Menu de contexto */}
       {menu && (
         <div
           className="fixed z-[9999] min-w-[180px] rounded border border-[#ccc] bg-white py-1.5 shadow-[2px_2px_10px_rgba(0,0,0,0.2)]"
           style={{ left: menu.x, top: menu.y }}
         >
           {[
-            { texto: "💬 Enviar mensagem", acao: () => void abrirChat(menu.contato) },
-            { texto: "🎨 Enviar desenho", acao: () => { void abrirChat(menu.contato); setDesenho(true); } },
+            { texto: "💬 Enviar mensagem", acao: () => abrirConversa(conversaDoContato(menu.contato)) },
             {
-              texto: "⚡ Enviar Wink",
+              texto: "🎨 Enviar desenho",
               acao: async () => {
-                await abrirChat(menu.contato);
-                piscar();
-                await enviarPara(menu.contato, "Wink!", "wink");
+                await abrirConversa(conversaDoContato(menu.contato));
+                setDesenho(true);
+              },
+            },
+            {
+              texto: "⚡ Galeria de winks",
+              acao: async () => {
+                await abrirConversa(conversaDoContato(menu.contato));
+                setWinksAberto(true);
               },
             },
             {
               texto: "📳 Toque de atenção",
               acao: async () => {
-                await abrirChat(menu.contato);
+                const conv = conversaDoContato(menu.contato);
+                await abrirConversa(conv);
                 tremer();
-                await enviarPara(menu.contato, "Toque de atenção!", "nudge");
+                await enviarEm(conv, "Toque de atenção!", "nudge");
               },
             },
-            { texto: "🎮 Jogar", acao: () => { void abrirChat(menu.contato); setJogos(true); } },
-            { texto: "✏️ Editar apelido", acao: () => editarApelido(menu.contato) },
-            { texto: "❌ Remover contato", acao: () => void removerContato(menu.contato) },
+            {
+              texto: "🎮 Jogar",
+              acao: async () => {
+                await abrirConversa(conversaDoContato(menu.contato));
+                setJogos(true);
+              },
+            },
+            { texto: "✏️ Editar apelido", acao: async () => editarApelido(menu.contato) },
+            { texto: "❌ Remover contato", acao: () => removerContato(menu.contato) },
           ].map((op) => (
             <button
               key={op.texto}
@@ -676,10 +908,10 @@ function Messenger() {
         </div>
       )}
 
-      {/* Wink em tela cheia */}
-      {wink && <div className="msn-wink">⚡</div>}
+      {winkAtivo && (
+        <div className={`msn-wink msn-anim-${winkAtivo.anim}`}>{winkAtivo.emoji}</div>
+      )}
 
-      {/* Notificações */}
       <div className="msn-toast space-y-2">
         {toasts.map((t) => (
           <div key={t.id} className="msn-window">
@@ -693,7 +925,6 @@ function Messenger() {
         ))}
       </div>
 
-      {/* Janela de entrada de texto (adicionar contato, música, apelido) */}
       {prompt && (
         <div className="msn-overlay">
           <form
@@ -719,13 +950,7 @@ function Messenger() {
               <label className="msn-label" htmlFor="promptValor">
                 {prompt.label}
               </label>
-              <input
-                id="promptValor"
-                name="valor"
-                className="msn-input"
-                defaultValue={prompt.valor}
-                autoFocus
-              />
+              <input id="promptValor" name="valor" className="msn-input" defaultValue={prompt.valor} autoFocus />
               <div className="mt-3 flex justify-end gap-2">
                 <button type="button" className="msn-btn-small" onClick={() => setPrompt(null)}>
                   Cancelar
@@ -739,20 +964,48 @@ function Messenger() {
         </div>
       )}
 
-      {desenho && ativo && (
-        <DrawModal
-          nomeContato={ativo.apelido ?? ativo.nome}
-          onClose={() => setDesenho(false)}
-          onSend={(dataUrl) => {
-            setDesenho(false);
-            void enviar(dataUrl, "drawing");
+      {buscarAberto && (
+        <BuscarModal
+          onClose={() => setBuscarAberto(false)}
+          onAdicionado={() => {
+            if (userId) void carregarContatos(userId);
+          }}
+          onGrupoCriado={async (id) => {
+            setBuscarAberto(false);
+            await carregarGrupos();
+            notificar("Grupo criado", "Já pode conversar com a turma!");
+            void abrirConversa({ tipo: "grupo", id, nome: "Novo grupo", avatar: null, status: "online" });
           }}
         />
       )}
 
-      {jogos && ativo && (
-        <GamesModal nomeContato={ativo.apelido ?? ativo.nome} onClose={() => setJogos(false)} />
+      {temaAberto && (
+        <ThemeModal tema={tema} onClose={() => setTemaAberto(false)} onSalvar={(t) => void salvarTema(t)} />
       )}
+
+      {winksAberto && ativo && (
+        <WinksModal
+          onClose={() => setWinksAberto(false)}
+          onEnviar={(w) => {
+            setWinksAberto(false);
+            tocarWink(w);
+            void enviarEm(ativo, w.id, "wink");
+          }}
+        />
+      )}
+
+      {desenho && ativo && (
+        <DrawModal
+          nomeContato={ativo.nome}
+          onClose={() => setDesenho(false)}
+          onSend={(dataUrl) => {
+            setDesenho(false);
+            void enviarEm(ativo, dataUrl, "drawing");
+          }}
+        />
+      )}
+
+      {jogos && ativo && <GamesModal nomeContato={ativo.nome} onClose={() => setJogos(false)} />}
     </div>
   );
 }
