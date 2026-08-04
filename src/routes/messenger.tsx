@@ -491,7 +491,7 @@ function Messenger() {
     if (userId) {
       await supabase
         .from("perfis")
-        .update({ tema: novo as unknown as Record<string, unknown> })
+        .update({ tema: novo as unknown as never })
         .eq("id", userId);
     }
     notificar("Tema salvo", "Sua aparência foi atualizada.");
