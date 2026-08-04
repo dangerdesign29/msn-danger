@@ -160,6 +160,7 @@ function Messenger() {
         (payload) => {
           const msg = payload.new as Mensagem;
           const atual = ativoRef.current;
+          void carregarContatos(userId);
           if (atual && msg.remetente_id === atual.id) {
             setMensagens((m) => [...m, msg]);
           }
@@ -209,6 +210,7 @@ function Messenger() {
       void supabase.removeChannel(canal);
       void supabase.removeChannel(canalPerfis);
       void supabase.removeChannel(canalContatos);
+      clearInterval(intervalo);
     };
   }, [userId, tremer, piscar, notificar, carregarContatos]);
 
