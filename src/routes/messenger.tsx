@@ -206,6 +206,10 @@ function Messenger() {
       )
       .subscribe();
 
+    const intervalo = setInterval(() => {
+      void carregarContatos(userId);
+    }, 15000);
+
     return () => {
       void supabase.removeChannel(canal);
       void supabase.removeChannel(canalPerfis);
