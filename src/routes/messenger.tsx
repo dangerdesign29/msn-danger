@@ -189,9 +189,26 @@ function Messenger() {
       })
       .subscribe();
 
+    const canalContatos = supabase
+      .channel("msn-contatos")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "contatos",
+          filter: `usuario_id=eq.${userId}`,
+        },
+        () => {
+          void carregarContatos(userId);
+        },
+      )
+      .subscribe();
+
     return () => {
       void supabase.removeChannel(canal);
       void supabase.removeChannel(canalPerfis);
+      void supabase.removeChannel(canalContatos);
     };
   }, [userId, tremer, piscar, notificar, carregarContatos]);
 
