@@ -21,12 +21,31 @@ export type Contato = Perfil & { apelido: string | null };
 export type Mensagem = {
   id: string;
   remetente_id: string;
-  destinatario_id: string;
+  destinatario_id: string | null;
+  grupo_id: string | null;
   mensagem: string;
   tipo: string;
   lida: boolean;
   enviada_em: string;
+  lida_em: string | null;
+  entregue_em: string | null;
+  anexo_url: string | null;
+  anexo_nome: string | null;
+  anexo_tipo: string | null;
+  anexo_tamanho: number | null;
 };
+
+export type Grupo = {
+  id: string;
+  nome: string;
+  descricao: string | null;
+  avatar_url: string | null;
+  dono_id: string;
+};
+
+export type Conversa =
+  | { tipo: "dm"; id: string; nome: string; avatar: string | null; status: string }
+  | { tipo: "grupo"; id: string; nome: string; avatar: string | null; status: string };
 
 export const STATUS_LABEL: Record<string, string> = {
   online: "🟢 Online",
