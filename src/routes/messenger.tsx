@@ -1157,7 +1157,164 @@ function Messenger() {
         />
       )}
 
-      {jogos && ativo && <GamesModal nomeContato={ativo.nome} onClose={() => setJogos(false)} />}
+      {jogos && ativo && ativo.tipo === "dm" && (
+        <GamesModal
+          nomeContato={ativo.nome}
+          aguardando={jogoAguardando}
+          onConvidar={convidarJogo}
+          onClose={() => {
+            setJogos(false);
+            setJogoAguardando(false);
+          }}
+        />
+      )}
+
+      {jogoSessao && userId && (
+        <JogoOnline
+          userId={userId}
+          sessao={jogoSessao}
+          registrarSinal={registrarSinal}
+          onClose={() => setJogoSessao(null)}
+        />
+      )}
+
+      {convite && userId && (
+        <div className="msn-overlay">
+          <div className="msn-window w-full max-w-[340px]">
+            <div className="msn-titlebar">
+              <div className="msn-titlebar-left">
+                <span>🎮 Convite para jogar</span>
+              </div>
+            </div>
+            <div className="msn-body text-center">
+              <p className="text-[13px] text-[#333]">
+                <strong>{convite.nome}</strong> te chamou para jogar{" "}
+                <strong>
+                  {convite.jogo === "velha"
+                    ? "Jogo da Velha"
+                    : convite.jogo === "pedra"
+                      ? "Pedra, Papel e Tesoura"
+                      : "Jogo da Memória"}
+                </strong>
+                .
+              </p>
+              <div className="mt-4 flex justify-center gap-2">
+                <button
+                  type="button"
+                  className="msn-btn-small px-3"
+                  onClick={() => {
+                    void enviarSinal(convite.de, { tipo: "jogo-recusado", de: userId });
+                    setConvite(null);
+                  }}
+                >
+                  Agora não
+                </button>
+                <button
+                  type="button"
+                  className="msn-btn px-4"
+                  onClick={() => {
+                    void enviarSinal(convite.de, {
+                      tipo: "jogo-aceito",
+                      de: userId,
+                      jogo: convite.jogo,
+                    });
+                    setJogoSessao({
+                      jogo: convite.jogo,
+                      outroId: convite.de,
+                      nome: convite.nome,
+                      anfitriao: false,
+                    });
+                    setConvite(null);
+                  }}
+                >
+                  Jogar!
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {recebendo && userId && (
+        <div className="msn-overlay">
+          <div className="msn-window w-full max-w-[340px]">
+            <div className="msn-titlebar">
+              <div className="msn-titlebar-left">
+                <span>{recebendo.video ? "📹" : "📞"} Chamada recebida</span>
+              </div>
+            </div>
+            <div className="msn-body text-center">
+              <div className="msn-chamando-icone text-[52px]">📞</div>
+              <p className="text-[14px] font-bold text-[#333]">{recebendo.nome}</p>
+              <p className="text-[12px] text-[#666]">
+                está te chamando {recebendo.video ? "em vídeo" : "por voz"}…
+              </p>
+              <div className="mt-4 flex justify-center gap-2">
+                <button
+                  type="button"
+                  className="msn-btn-desligar"
+                  onClick={() => {
+                    void enviarSinal(recebendo.outroId, { tipo: "chamada-recusada", de: userId });
+                    pararVibracao();
+                    setRecebendo(null);
+                  }}
+                >
+                  📴 Recusar
+                </button>
+                <button
+                  type="button"
+                  className="msn-btn px-4"
+                  onClick={() => {
+                    pararVibracao();
+                    setChamada(recebendo);
+                    setRecebendo(null);
+                  }}
+                >
+                  ✅ Atender
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {chamada && userId && (
+        <CallModal
+          userId={userId}
+          chamada={chamada}
+          registrarSinal={registrarSinal}
+          onEncerrar={() => {
+            pararVibracao();
+            setChamada(null);
+          }}
+        />
+      )}
+
+      {pedirNotif && (
+        <div className="msn-instalar">
+          <span className="text-[24px]">🔔</span>
+          <div className="min-w-0 flex-1 text-[11px] leading-tight text-[#333]">
+            <strong className="block text-[12px]">Ativar notificações</strong>
+            Avisamos quando chegar mensagem, toque ou chamada mesmo com o app fechado.
+          </div>
+          <button
+            type="button"
+            className="msn-btn px-3 py-1 text-[11px]"
+            onClick={async () => {
+              const r = await pedirPermissao();
+              setPedirNotif(false);
+              if (r === "granted") notificar("Notificações ativadas", "Agora você não perde nada 🔔");
+            }}
+          >
+            Permitir
+          </button>
+          <button type="button" className="msn-btn-small" aria-label="Dispensar" onClick={() => setPedirNotif(false)}>
+            ✕
+          </button>
+        </div>
+      )}
+
+      {!pedirNotif && <InstalarApp />}
     </div>
   );
 }
