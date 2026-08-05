@@ -818,6 +818,14 @@ function Messenger() {
           ) : (
             <>
               <div className="msn-chat-header">
+                <button
+                  type="button"
+                  className="msn-btn-small md:hidden"
+                  aria-label="Voltar para contatos"
+                  onClick={() => setMostrarChat(false)}
+                >
+                  ←
+                </button>
                 {ativo.tipo === "grupo" ? (
                   <span className="msn-grupo-icone">👥</span>
                 ) : (
@@ -829,8 +837,28 @@ function Messenger() {
                     {ativo.tipo === "grupo" ? "conversa em grupo" : ativo.status}
                   </div>
                 </div>
+                {ativo.tipo === "dm" && (
+                  <>
+                    <button
+                      type="button"
+                      className="msn-tool"
+                      title="Chamada de voz"
+                      onClick={() => iniciarChamada(false)}
+                    >
+                      📞
+                    </button>
+                    <button
+                      type="button"
+                      className="msn-tool"
+                      title="Chamada de vídeo"
+                      onClick={() => iniciarChamada(true)}
+                    >
+                      📹
+                    </button>
+                  </>
+                )}
                 <input
-                  className="msn-input w-[150px]"
+                  className="msn-input hidden w-[150px] sm:block"
                   placeholder="Buscar no histórico"
                   aria-label="Buscar no histórico da conversa"
                   value={buscaMsg}
