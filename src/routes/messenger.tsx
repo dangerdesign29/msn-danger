@@ -90,29 +90,52 @@ function Messenger() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [prompt, setPrompt] = useState<Prompt | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; contato: Contato } | null>(null);
+  const [mostrarChat, setMostrarChat] = useState(false);
+  const [chamada, setChamada] = useState<ChamadaAtiva | null>(null);
+  const [recebendo, setRecebendo] = useState<ChamadaAtiva | null>(null);
+  const [jogoSessao, setJogoSessao] = useState<Sessao | null>(null);
+  const [jogoAguardando, setJogoAguardando] = useState(false);
+  const [convite, setConvite] = useState<{ de: string; nome: string; jogo: JogoId } | null>(null);
+  const [pedirNotif, setPedirNotif] = useState(false);
 
   const ativoRef = useRef<Conversa | null>(null);
   ativoRef.current = ativo;
+  const contatosRef = useRef<Contato[]>([]);
+  const chamadaRef = useRef<ChamadaAtiva | null>(null);
+  chamadaRef.current = chamada ?? recebendo;
+  const sinalRef = useRef<((s: Sinal) => void) | null>(null);
   const fimRef = useRef<HTMLDivElement | null>(null);
   const avatarRef = useRef<HTMLInputElement | null>(null);
   const anexoRef = useRef<HTMLInputElement | null>(null);
   const gravadorRef = useRef<MediaRecorder | null>(null);
 
+  const registrarSinal = useCallback((fn: ((s: Sinal) => void) | null) => {
+    sinalRef.current = fn;
+  }, []);
+
+  const nomeDe = useCallback((id: string) => {
+    const c = contatosRef.current.find((x) => x.id === id);
+    return c ? (c.apelido ?? c.nome) : "Contato";
+  }, []);
+
   const notificar = useCallback((titulo: string, textoToast: string) => {
     const id = Date.now() + Math.random();
     setToasts((t) => [...t, { id, titulo, texto: textoToast }]);
+    mostrarNotificacao(titulo, textoToast);
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4500);
   }, []);
 
   const tremer = useCallback(() => {
     setTremendo(true);
     playSound("nudge");
+    vibrar(PADROES.toque);
     setTimeout(() => setTremendo(false), 600);
   }, []);
 
   const tocarWink = useCallback((w: Wink) => {
     setWinkAtivo(w);
     playSound(w.som);
+    vibrar(PADROES.wink);
     setTimeout(() => setWinkAtivo(null), 1600);
   }, []);
 
