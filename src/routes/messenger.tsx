@@ -4,12 +4,23 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import buddy from "@/assets/msn-buddy.png";
 import { Anexo } from "@/components/msn/Anexo";
 import { BuscarModal } from "@/components/msn/BuscarModal";
+import { CallModal, type ChamadaAtiva } from "@/components/msn/CallModal";
 import { DrawModal } from "@/components/msn/DrawModal";
-import { GamesModal } from "@/components/msn/GamesModal";
+import { GamesModal, type JogoId } from "@/components/msn/GamesModal";
+import { InstalarApp } from "@/components/msn/InstalarApp";
+import { JogoOnline, type Sessao } from "@/components/msn/JogoOnline";
 import { ThemeModal } from "@/components/msn/ThemeModal";
 import { WinksModal } from "@/components/msn/WinksModal";
 import { supabase } from "@/integrations/supabase/client";
 import { enviarAnexo } from "@/lib/anexos";
+import {
+  jaPerguntou,
+  mostrarNotificacao,
+  pedirPermissao,
+  permissaoAtual,
+} from "@/lib/notificacoes";
+import { canalPessoal, enviarSinal, type Sinal } from "@/lib/rtc";
+import { PADROES, pararVibracao, vibrar } from "@/lib/vibrar";
 import {
   EMOTICON_PALETTE,
   STATUS_LABEL,
