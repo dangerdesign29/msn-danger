@@ -4,12 +4,23 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import buddy from "@/assets/msn-buddy.png";
 import { Anexo } from "@/components/msn/Anexo";
 import { BuscarModal } from "@/components/msn/BuscarModal";
+import { CallModal, type ChamadaAtiva } from "@/components/msn/CallModal";
 import { DrawModal } from "@/components/msn/DrawModal";
-import { GamesModal } from "@/components/msn/GamesModal";
+import { GamesModal, type JogoId } from "@/components/msn/GamesModal";
+import { InstalarApp } from "@/components/msn/InstalarApp";
+import { JogoOnline, type Sessao } from "@/components/msn/JogoOnline";
 import { ThemeModal } from "@/components/msn/ThemeModal";
 import { WinksModal } from "@/components/msn/WinksModal";
 import { supabase } from "@/integrations/supabase/client";
 import { enviarAnexo } from "@/lib/anexos";
+import {
+  jaPerguntou,
+  mostrarNotificacao,
+  pedirPermissao,
+  permissaoAtual,
+} from "@/lib/notificacoes";
+import { canalPessoal, enviarSinal, type Sinal } from "@/lib/rtc";
+import { PADROES, pararVibracao, vibrar } from "@/lib/vibrar";
 import {
   EMOTICON_PALETTE,
   STATUS_LABEL,
@@ -79,29 +90,52 @@ function Messenger() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [prompt, setPrompt] = useState<Prompt | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; contato: Contato } | null>(null);
+  const [mostrarChat, setMostrarChat] = useState(false);
+  const [chamada, setChamada] = useState<ChamadaAtiva | null>(null);
+  const [recebendo, setRecebendo] = useState<ChamadaAtiva | null>(null);
+  const [jogoSessao, setJogoSessao] = useState<Sessao | null>(null);
+  const [jogoAguardando, setJogoAguardando] = useState(false);
+  const [convite, setConvite] = useState<{ de: string; nome: string; jogo: JogoId } | null>(null);
+  const [pedirNotif, setPedirNotif] = useState(false);
 
   const ativoRef = useRef<Conversa | null>(null);
   ativoRef.current = ativo;
+  const contatosRef = useRef<Contato[]>([]);
+  const chamadaRef = useRef<ChamadaAtiva | null>(null);
+  chamadaRef.current = chamada ?? recebendo;
+  const sinalRef = useRef<((s: Sinal) => void) | null>(null);
   const fimRef = useRef<HTMLDivElement | null>(null);
   const avatarRef = useRef<HTMLInputElement | null>(null);
   const anexoRef = useRef<HTMLInputElement | null>(null);
   const gravadorRef = useRef<MediaRecorder | null>(null);
 
+  const registrarSinal = useCallback((fn: ((s: Sinal) => void) | null) => {
+    sinalRef.current = fn;
+  }, []);
+
+  const nomeDe = useCallback((id: string) => {
+    const c = contatosRef.current.find((x) => x.id === id);
+    return c ? (c.apelido ?? c.nome) : "Contato";
+  }, []);
+
   const notificar = useCallback((titulo: string, textoToast: string) => {
     const id = Date.now() + Math.random();
     setToasts((t) => [...t, { id, titulo, texto: textoToast }]);
+    mostrarNotificacao(titulo, textoToast);
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4500);
   }, []);
 
   const tremer = useCallback(() => {
     setTremendo(true);
     playSound("nudge");
+    vibrar(PADROES.toque);
     setTimeout(() => setTremendo(false), 600);
   }, []);
 
   const tocarWink = useCallback((w: Wink) => {
     setWinkAtivo(w);
     playSound(w.som);
+    vibrar(PADROES.wink);
     setTimeout(() => setWinkAtivo(null), 1600);
   }, []);
 
@@ -114,6 +148,7 @@ function Messenger() {
     const ids = (vinculos ?? []).map((v) => v.contato_id);
     if (ids.length === 0) {
       setContatos([]);
+      contatosRef.current = [];
       return;
     }
     const { data: perfis } = await supabase.from("perfis").select("*").in("id", ids);
@@ -127,6 +162,7 @@ function Messenger() {
       return pa - pb || (a.apelido ?? a.nome).localeCompare(b.apelido ?? b.nome);
     });
     setContatos(lista);
+    contatosRef.current = lista;
   }, []);
 
   const carregarGrupos = useCallback(async () => {
@@ -270,6 +306,7 @@ function Messenger() {
         notificar("Wink recebido!", w ? `${w.emoji} ${w.frase}` : "Você recebeu um wink ⚡");
       } else {
         playSound("message");
+        vibrar(PADROES.mensagem);
         if (!daConversa) {
           notificar(
             "Nova mensagem",
@@ -354,6 +391,74 @@ function Messenger() {
     if (!buscandoMsg) fimRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [mensagens, buscandoMsg]);
 
+  // ---------- sinalização de chamadas e jogos ----------
+  useEffect(() => {
+    if (!userId) return;
+    const canal = supabase
+      .channel(canalPessoal(userId))
+      .on("broadcast", { event: "sinal" }, ({ payload }) => {
+        const s = payload as Sinal;
+        if (s.tipo === "chamada-oferta") {
+          if (chamadaRef.current) {
+            void enviarSinal(s.de, { tipo: "chamada-fim", de: userId, motivo: "ocupado" });
+            return;
+          }
+          setRecebendo({
+            outroId: s.de,
+            nome: nomeDe(s.de),
+            video: s.video,
+            papel: "recebendo",
+            sdp: s.sdp,
+          });
+          playSound("nudge");
+          vibrar(PADROES.chamada);
+          return;
+        }
+        if (s.tipo === "jogo-convite") {
+          setConvite({ de: s.de, nome: nomeDe(s.de), jogo: s.jogo as JogoId });
+          playSound("wink");
+          vibrar(PADROES.wink);
+          return;
+        }
+        if (s.tipo === "jogo-aceito") {
+          setJogoAguardando(false);
+          setJogos(false);
+          setJogoSessao({
+            jogo: s.jogo as JogoId,
+            outroId: s.de,
+            nome: nomeDe(s.de),
+            anfitriao: true,
+          });
+          return;
+        }
+        if (s.tipo === "jogo-recusado") {
+          setJogoAguardando(false);
+          notificar("Jogo recusado", `${nomeDe(s.de)} não quer jogar agora.`);
+          return;
+        }
+        if (s.tipo === "chamada-fim" && !sinalRef.current) {
+          setRecebendo(null);
+          pararVibracao();
+          return;
+        }
+        sinalRef.current?.(s);
+      })
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(canal);
+    };
+  }, [userId, nomeDe, notificar]);
+
+  // ---------- permissão de notificações ----------
+  useEffect(() => {
+    if (!userId) return;
+    if (permissaoAtual() === "default" && !jaPerguntou()) {
+      const t = setTimeout(() => setPedirNotif(true), 2500);
+      return () => clearTimeout(t);
+    }
+    return;
+  }, [userId]);
+
   useEffect(() => {
     if (!menu) return;
     const fechar = () => setMenu(null);
@@ -379,7 +484,26 @@ function Messenger() {
     setEmoticons(false);
     setBuscaMsg("");
     setBuscandoMsg(false);
+    setMostrarChat(true);
+    vibrar(PADROES.clique);
     if (userId) await carregarMensagens(userId, c);
+  }
+
+  function iniciarChamada(video: boolean) {
+    if (!ativo || ativo.tipo !== "dm") return;
+    vibrar(PADROES.clique);
+    setChamada({ outroId: ativo.id, nome: ativo.nome, video, papel: "chamando" });
+  }
+
+  function convidarJogo(jogo: JogoId) {
+    if (!userId || !ativo || ativo.tipo !== "dm") return;
+    setJogoAguardando(true);
+    void enviarSinal(ativo.id, {
+      tipo: "jogo-convite",
+      de: userId,
+      nome: perfil?.nome ?? "Contato",
+      jogo,
+    });
   }
 
   const conversaDoContato = (c: Contato): Conversa => ({
@@ -570,7 +694,7 @@ function Messenger() {
         }}
       />
 
-      <div className="msn-shell">
+      <div className={`msn-shell ${mostrarChat ? "mostrar-chat" : ""}`}>
         <aside className="msn-contacts">
           <div className="msn-userinfo">
             <img
@@ -694,6 +818,14 @@ function Messenger() {
           ) : (
             <>
               <div className="msn-chat-header">
+                <button
+                  type="button"
+                  className="msn-btn-small md:hidden"
+                  aria-label="Voltar para contatos"
+                  onClick={() => setMostrarChat(false)}
+                >
+                  ←
+                </button>
                 {ativo.tipo === "grupo" ? (
                   <span className="msn-grupo-icone">👥</span>
                 ) : (
@@ -705,8 +837,28 @@ function Messenger() {
                     {ativo.tipo === "grupo" ? "conversa em grupo" : ativo.status}
                   </div>
                 </div>
+                {ativo.tipo === "dm" && (
+                  <>
+                    <button
+                      type="button"
+                      className="msn-tool"
+                      title="Chamada de voz"
+                      onClick={() => iniciarChamada(false)}
+                    >
+                      📞
+                    </button>
+                    <button
+                      type="button"
+                      className="msn-tool"
+                      title="Chamada de vídeo"
+                      onClick={() => iniciarChamada(true)}
+                    >
+                      📹
+                    </button>
+                  </>
+                )}
                 <input
-                  className="msn-input w-[150px]"
+                  className="msn-input hidden w-[150px] sm:block"
                   placeholder="Buscar no histórico"
                   aria-label="Buscar no histórico da conversa"
                   value={buscaMsg}
@@ -1005,7 +1157,164 @@ function Messenger() {
         />
       )}
 
-      {jogos && ativo && <GamesModal nomeContato={ativo.nome} onClose={() => setJogos(false)} />}
+      {jogos && ativo && ativo.tipo === "dm" && (
+        <GamesModal
+          nomeContato={ativo.nome}
+          aguardando={jogoAguardando}
+          onConvidar={convidarJogo}
+          onClose={() => {
+            setJogos(false);
+            setJogoAguardando(false);
+          }}
+        />
+      )}
+
+      {jogoSessao && userId && (
+        <JogoOnline
+          userId={userId}
+          sessao={jogoSessao}
+          registrarSinal={registrarSinal}
+          onClose={() => setJogoSessao(null)}
+        />
+      )}
+
+      {convite && userId && (
+        <div className="msn-overlay">
+          <div className="msn-window w-full max-w-[340px]">
+            <div className="msn-titlebar">
+              <div className="msn-titlebar-left">
+                <span>🎮 Convite para jogar</span>
+              </div>
+            </div>
+            <div className="msn-body text-center">
+              <p className="text-[13px] text-[#333]">
+                <strong>{convite.nome}</strong> te chamou para jogar{" "}
+                <strong>
+                  {convite.jogo === "velha"
+                    ? "Jogo da Velha"
+                    : convite.jogo === "pedra"
+                      ? "Pedra, Papel e Tesoura"
+                      : "Jogo da Memória"}
+                </strong>
+                .
+              </p>
+              <div className="mt-4 flex justify-center gap-2">
+                <button
+                  type="button"
+                  className="msn-btn-small px-3"
+                  onClick={() => {
+                    void enviarSinal(convite.de, { tipo: "jogo-recusado", de: userId });
+                    setConvite(null);
+                  }}
+                >
+                  Agora não
+                </button>
+                <button
+                  type="button"
+                  className="msn-btn px-4"
+                  onClick={() => {
+                    void enviarSinal(convite.de, {
+                      tipo: "jogo-aceito",
+                      de: userId,
+                      jogo: convite.jogo,
+                    });
+                    setJogoSessao({
+                      jogo: convite.jogo,
+                      outroId: convite.de,
+                      nome: convite.nome,
+                      anfitriao: false,
+                    });
+                    setConvite(null);
+                  }}
+                >
+                  Jogar!
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {recebendo && userId && (
+        <div className="msn-overlay">
+          <div className="msn-window w-full max-w-[340px]">
+            <div className="msn-titlebar">
+              <div className="msn-titlebar-left">
+                <span>{recebendo.video ? "📹" : "📞"} Chamada recebida</span>
+              </div>
+            </div>
+            <div className="msn-body text-center">
+              <div className="msn-chamando-icone text-[52px]">📞</div>
+              <p className="text-[14px] font-bold text-[#333]">{recebendo.nome}</p>
+              <p className="text-[12px] text-[#666]">
+                está te chamando {recebendo.video ? "em vídeo" : "por voz"}…
+              </p>
+              <div className="mt-4 flex justify-center gap-2">
+                <button
+                  type="button"
+                  className="msn-btn-desligar"
+                  onClick={() => {
+                    void enviarSinal(recebendo.outroId, { tipo: "chamada-recusada", de: userId });
+                    pararVibracao();
+                    setRecebendo(null);
+                  }}
+                >
+                  📴 Recusar
+                </button>
+                <button
+                  type="button"
+                  className="msn-btn px-4"
+                  onClick={() => {
+                    pararVibracao();
+                    setChamada(recebendo);
+                    setRecebendo(null);
+                  }}
+                >
+                  ✅ Atender
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {chamada && userId && (
+        <CallModal
+          userId={userId}
+          chamada={chamada}
+          registrarSinal={registrarSinal}
+          onEncerrar={() => {
+            pararVibracao();
+            setChamada(null);
+          }}
+        />
+      )}
+
+      {pedirNotif && (
+        <div className="msn-instalar">
+          <span className="text-[24px]">🔔</span>
+          <div className="min-w-0 flex-1 text-[11px] leading-tight text-[#333]">
+            <strong className="block text-[12px]">Ativar notificações</strong>
+            Avisamos quando chegar mensagem, toque ou chamada mesmo com o app fechado.
+          </div>
+          <button
+            type="button"
+            className="msn-btn px-3 py-1 text-[11px]"
+            onClick={async () => {
+              const r = await pedirPermissao();
+              setPedirNotif(false);
+              if (r === "granted") notificar("Notificações ativadas", "Agora você não perde nada 🔔");
+            }}
+          >
+            Permitir
+          </button>
+          <button type="button" className="msn-btn-small" aria-label="Dispensar" onClick={() => setPedirNotif(false)}>
+            ✕
+          </button>
+        </div>
+      )}
+
+      {!pedirNotif && <InstalarApp />}
     </div>
   );
 }

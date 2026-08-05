@@ -1,0 +1,63 @@
+import type { SoundName } from "@/lib/msn";
+
+export type Figurinha = {
+  id: string;
+  nome: string;
+  emoji: string;
+  anim: "zoom" | "girar" | "pular" | "tremer" | "flutuar" | "pulsar" | "balancar" | "piscar";
+  som: SoundName;
+  frase: string;
+  pacote: string;
+};
+
+export const PACOTES = [
+  "Clássicos",
+  "Amor",
+  "Zoeira",
+  "Festa",
+  "Animais",
+  "Comida",
+] as const;
+
+export const FIGURINHAS: Figurinha[] = [
+  { id: "beijo", nome: "Beijo", emoji: "💋", anim: "zoom", som: "wink", frase: "Mandou um beijo!", pacote: "Amor" },
+  { id: "coracao", nome: "Chuva de corações", emoji: "💖", anim: "flutuar", som: "wink", frase: "Corações pra você!", pacote: "Amor" },
+  { id: "apaixonado", nome: "Apaixonado", emoji: "😍", anim: "pulsar", som: "wink", frase: "Tô caidinho!", pacote: "Amor" },
+  { id: "casal", nome: "Casal", emoji: "💑", anim: "balancar", som: "wink", frase: "Que casal!", pacote: "Amor" },
+  { id: "anel", nome: "Pedido", emoji: "💍", anim: "girar", som: "wink", frase: "Casa comigo?", pacote: "Amor" },
+  { id: "risada", nome: "Gargalhada", emoji: "🤣", anim: "pular", som: "wink", frase: "HAHAHAHA!", pacote: "Zoeira" },
+  { id: "tapa", nome: "Tapa na cara", emoji: "🖐️", anim: "tremer", som: "nudge", frase: "Levou um tapa!", pacote: "Zoeira" },
+  { id: "bomba", nome: "Bomba", emoji: "💣", anim: "zoom", som: "nudge", frase: "BOOM!", pacote: "Zoeira" },
+  { id: "palhaco", nome: "Palhaço", emoji: "🤡", anim: "girar", som: "wink", frase: "Palhaçada!", pacote: "Zoeira" },
+  { id: "cocô", nome: "Cocozinho", emoji: "💩", anim: "pular", som: "nudge", frase: "Eca!", pacote: "Zoeira" },
+  { id: "zumbi", nome: "Zumbi", emoji: "🧟", anim: "balancar", som: "nudge", frase: "Cérebros...", pacote: "Zoeira" },
+  { id: "festa", nome: "Festa", emoji: "🎉", anim: "girar", som: "wink", frase: "Hora da festa!", pacote: "Festa" },
+  { id: "dancar", nome: "Dança", emoji: "🕺", anim: "pular", som: "wink", frase: "Bora dançar!", pacote: "Festa" },
+  { id: "cerveja", nome: "Brinde", emoji: "🍻", anim: "girar", som: "wink", frase: "Saúde!", pacote: "Festa" },
+  { id: "bolo", nome: "Parabéns", emoji: "🎂", anim: "pulsar", som: "wink", frase: "Parabéns pra você!", pacote: "Festa" },
+  { id: "confete", nome: "Confete", emoji: "🎊", anim: "flutuar", som: "wink", frase: "Uhuuul!", pacote: "Festa" },
+  { id: "musica", nome: "Som na caixa", emoji: "🎶", anim: "balancar", som: "wink", frase: "Tum tum tum!", pacote: "Festa" },
+  { id: "raio", nome: "Raio", emoji: "⚡", anim: "tremer", som: "wink", frase: "Zap!", pacote: "Clássicos" },
+  { id: "fogo", nome: "Pegando fogo", emoji: "🔥", anim: "pulsar", som: "wink", frase: "Tá quente!", pacote: "Clássicos" },
+  { id: "chorar", nome: "Choro de rio", emoji: "😭", anim: "flutuar", som: "wink", frase: "Buááá!", pacote: "Clássicos" },
+  { id: "fantasma", nome: "Susto", emoji: "👻", anim: "flutuar", som: "nudge", frase: "Buuu!", pacote: "Clássicos" },
+  { id: "estrela", nome: "Estrelinhas", emoji: "✨", anim: "pulsar", som: "wink", frase: "Brilha!", pacote: "Clássicos" },
+  { id: "foguete", nome: "Foguete", emoji: "🚀", anim: "zoom", som: "nudge", frase: "Decolou!", pacote: "Clássicos" },
+  { id: "joia", nome: "Joia", emoji: "👍", anim: "pular", som: "wink", frase: "Show!", pacote: "Clássicos" },
+  { id: "aplauso", nome: "Aplausos", emoji: "👏", anim: "tremer", som: "wink", frase: "Bravo!", pacote: "Clássicos" },
+  { id: "sono", nome: "Sono", emoji: "😴", anim: "flutuar", som: "wink", frase: "Zzzzz...", pacote: "Clássicos" },
+  { id: "piscar", nome: "Piscadinha", emoji: "😉", anim: "piscar", som: "wink", frase: "Piscou!", pacote: "Clássicos" },
+  { id: "gato", nome: "Gatinho fofo", emoji: "😻", anim: "pulsar", som: "wink", frase: "Que fofura!", pacote: "Animais" },
+  { id: "cachorro", nome: "Cachorrinho", emoji: "🐶", anim: "pular", som: "wink", frase: "Au au!", pacote: "Animais" },
+  { id: "macaco", nome: "Macaco doido", emoji: "🐵", anim: "balancar", som: "wink", frase: "Uh uh ah ah!", pacote: "Animais" },
+  { id: "unicornio", nome: "Unicórnio", emoji: "🦄", anim: "girar", som: "wink", frase: "Mágico!", pacote: "Animais" },
+  { id: "panda", nome: "Panda", emoji: "🐼", anim: "balancar", som: "wink", frase: "Fofinho!", pacote: "Animais" },
+  { id: "pizza", nome: "Pizza", emoji: "🍕", anim: "girar", som: "wink", frase: "Bateu a fome!", pacote: "Comida" },
+  { id: "hamburguer", nome: "Lanche", emoji: "🍔", anim: "pular", som: "wink", frase: "Vamos comer!", pacote: "Comida" },
+  { id: "cafe", nome: "Cafézinho", emoji: "☕", anim: "flutuar", som: "wink", frase: "Bora um café?", pacote: "Comida" },
+  { id: "sorvete", nome: "Sorvete", emoji: "🍦", anim: "pulsar", som: "wink", frase: "Refrescante!", pacote: "Comida" },
+];
+
+export function acharFigurinha(id: string): Figurinha | undefined {
+  return FIGURINHAS.find((f) => f.id === id);
+}
