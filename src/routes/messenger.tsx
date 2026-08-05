@@ -391,6 +391,74 @@ function Messenger() {
     if (!buscandoMsg) fimRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [mensagens, buscandoMsg]);
 
+  // ---------- sinalização de chamadas e jogos ----------
+  useEffect(() => {
+    if (!userId) return;
+    const canal = supabase
+      .channel(canalPessoal(userId))
+      .on("broadcast", { event: "sinal" }, ({ payload }) => {
+        const s = payload as Sinal;
+        if (s.tipo === "chamada-oferta") {
+          if (chamadaRef.current) {
+            void enviarSinal(s.de, { tipo: "chamada-fim", de: userId, motivo: "ocupado" });
+            return;
+          }
+          setRecebendo({
+            outroId: s.de,
+            nome: nomeDe(s.de),
+            video: s.video,
+            papel: "recebendo",
+            sdp: s.sdp,
+          });
+          playSound("nudge");
+          vibrar(PADROES.chamada);
+          return;
+        }
+        if (s.tipo === "jogo-convite") {
+          setConvite({ de: s.de, nome: nomeDe(s.de), jogo: s.jogo as JogoId });
+          playSound("wink");
+          vibrar(PADROES.wink);
+          return;
+        }
+        if (s.tipo === "jogo-aceito") {
+          setJogoAguardando(false);
+          setJogos(false);
+          setJogoSessao({
+            jogo: s.jogo as JogoId,
+            outroId: s.de,
+            nome: nomeDe(s.de),
+            anfitriao: true,
+          });
+          return;
+        }
+        if (s.tipo === "jogo-recusado") {
+          setJogoAguardando(false);
+          notificar("Jogo recusado", `${nomeDe(s.de)} não quer jogar agora.`);
+          return;
+        }
+        if (s.tipo === "chamada-fim" && recebendoRef.current && !chamadaRef.current) {
+          setRecebendo(null);
+          pararVibracao();
+          return;
+        }
+        sinalRef.current?.(s);
+      })
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(canal);
+    };
+  }, [userId, nomeDe, notificar]);
+
+  // ---------- permissão de notificações ----------
+  useEffect(() => {
+    if (!userId) return;
+    if (permissaoAtual() === "default" && !jaPerguntou()) {
+      const t = setTimeout(() => setPedirNotif(true), 2500);
+      return () => clearTimeout(t);
+    }
+    return;
+  }, [userId]);
+
   useEffect(() => {
     if (!menu) return;
     const fechar = () => setMenu(null);
