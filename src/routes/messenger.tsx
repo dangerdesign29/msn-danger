@@ -148,6 +148,7 @@ function Messenger() {
     const ids = (vinculos ?? []).map((v) => v.contato_id);
     if (ids.length === 0) {
       setContatos([]);
+      contatosRef.current = [];
       return;
     }
     const { data: perfis } = await supabase.from("perfis").select("*").in("id", ids);
@@ -161,6 +162,7 @@ function Messenger() {
       return pa - pb || (a.apelido ?? a.nome).localeCompare(b.apelido ?? b.nome);
     });
     setContatos(lista);
+    contatosRef.current = lista;
   }, []);
 
   const carregarGrupos = useCallback(async () => {
@@ -304,6 +306,7 @@ function Messenger() {
         notificar("Wink recebido!", w ? `${w.emoji} ${w.frase}` : "Você recebeu um wink ⚡");
       } else {
         playSound("message");
+        vibrar(PADROES.mensagem);
         if (!daConversa) {
           notificar(
             "Nova mensagem",
