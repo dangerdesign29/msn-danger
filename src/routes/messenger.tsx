@@ -436,7 +436,7 @@ function Messenger() {
           notificar("Jogo recusado", `${nomeDe(s.de)} não quer jogar agora.`);
           return;
         }
-        if (s.tipo === "chamada-fim" && recebendoRef.current && !chamadaRef.current) {
+        if (s.tipo === "chamada-fim" && !sinalRef.current) {
           setRecebendo(null);
           pararVibracao();
           return;
