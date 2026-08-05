@@ -484,7 +484,26 @@ function Messenger() {
     setEmoticons(false);
     setBuscaMsg("");
     setBuscandoMsg(false);
+    setMostrarChat(true);
+    vibrar(PADROES.clique);
     if (userId) await carregarMensagens(userId, c);
+  }
+
+  function iniciarChamada(video: boolean) {
+    if (!ativo || ativo.tipo !== "dm") return;
+    vibrar(PADROES.clique);
+    setChamada({ outroId: ativo.id, nome: ativo.nome, video, papel: "chamando" });
+  }
+
+  function convidarJogo(jogo: JogoId) {
+    if (!userId || !ativo || ativo.tipo !== "dm") return;
+    setJogoAguardando(true);
+    void enviarSinal(ativo.id, {
+      tipo: "jogo-convite",
+      de: userId,
+      nome: perfil?.nome ?? "Contato",
+      jogo,
+    });
   }
 
   const conversaDoContato = (c: Contato): Conversa => ({
@@ -675,7 +694,7 @@ function Messenger() {
         }}
       />
 
-      <div className="msn-shell">
+      <div className={`msn-shell ${mostrarChat ? "mostrar-chat" : ""}`}>
         <aside className="msn-contacts">
           <div className="msn-userinfo">
             <img
