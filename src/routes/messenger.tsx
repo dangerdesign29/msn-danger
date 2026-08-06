@@ -1116,6 +1116,17 @@ function Messenger() {
                   </div>
                 )}
 
+                {digitando && (
+                  <div className="msn-digitando" aria-live="polite">
+                    <span className="msn-digitando-bolinhas">
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                    {digitando} está digitando…
+                  </div>
+                )}
+
                 <div className="flex gap-1.5">
                   <textarea
                     className="msn-textarea"
