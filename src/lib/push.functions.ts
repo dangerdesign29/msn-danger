@@ -92,7 +92,7 @@ export const enviarPush = createServerFn({ method: "POST" })
             },
             { subject, publicKey, privateKey },
           );
-          const res = await fetch(a.endpoint, payload);
+          const res = await fetch(a.endpoint, payload as unknown as RequestInit);
           if (res.status === 404 || res.status === 410) {
             await supabaseAdmin.from("push_assinaturas").delete().eq("endpoint", a.endpoint);
           } else if (res.ok) {
