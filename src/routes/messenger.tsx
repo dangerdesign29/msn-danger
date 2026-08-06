@@ -7,19 +7,23 @@ import { BuscarModal } from "@/components/msn/BuscarModal";
 import { CallModal, type ChamadaAtiva } from "@/components/msn/CallModal";
 import { DrawModal } from "@/components/msn/DrawModal";
 import { GamesModal, type JogoId } from "@/components/msn/GamesModal";
+import { GrupoModal } from "@/components/msn/GrupoModal";
 import { InstalarApp } from "@/components/msn/InstalarApp";
 import { JogoOnline, type Sessao } from "@/components/msn/JogoOnline";
 import { ThemeModal } from "@/components/msn/ThemeModal";
 import { WinksModal } from "@/components/msn/WinksModal";
 import { supabase } from "@/integrations/supabase/client";
 import { enviarAnexo } from "@/lib/anexos";
+import { estaOnline, lerConversa, lerListas, salvarConversa, salvarListas } from "@/lib/cache";
 import {
   jaPerguntou,
   mostrarNotificacao,
   pedirPermissao,
   permissaoAtual,
 } from "@/lib/notificacoes";
-import { canalPessoal, enviarSinal, type Sinal } from "@/lib/rtc";
+import { enviarPush } from "@/lib/push.functions";
+import { ativarPush, registrarServiceWorker, suportaPush } from "@/lib/push";
+import { canalConversa, canalPessoal, enviarSinal, type Sinal } from "@/lib/rtc";
 import { PADROES, pararVibracao, vibrar } from "@/lib/vibrar";
 import {
   EMOTICON_PALETTE,
