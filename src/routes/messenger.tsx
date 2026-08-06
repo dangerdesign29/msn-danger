@@ -804,6 +804,13 @@ function Messenger() {
     <div className={`msn-root ${tremendo ? "msn-shaking" : ""}`}>
       <h1 className="sr-only">Windows Live Messenger</h1>
 
+      {!online && (
+        <div className="msn-offline" role="status">
+          📴 Sem internet — mostrando conversas salvas no aparelho
+        </div>
+      )}
+      {online && pushAtivo && <span className="sr-only">Notificações push ativas</span>}
+
       <input ref={avatarRef} type="file" accept="image/*" className="hidden" onChange={trocarAvatar} />
       <input
         ref={anexoRef}
