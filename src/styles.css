@@ -898,3 +898,48 @@
     max-height: 42vh;
   }
 }
+
+/* ---- Modo offline, digitando e push ---- */
+.msn-offline {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  padding: 6px 10px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: bold;
+  color: #5a3b00;
+  background: linear-gradient(#ffe9a8, #ffd25e);
+  border-bottom: 1px solid #c9a13a;
+}
+
+.msn-digitando {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px 4px;
+  font-size: 11px;
+  font-style: italic;
+  color: #4a4a4a;
+}
+
+.msn-digitando-bolinhas {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.msn-digitando-bolinhas i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--msn-primaria, #0054e3);
+  animation: msn-pontinho 1.2s infinite ease-in-out;
+}
+
+.msn-digitando-bolinhas i:nth-child(2) { animation-delay: 0.15s; }
+.msn-digitando-bolinhas i:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes msn-pontinho {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
