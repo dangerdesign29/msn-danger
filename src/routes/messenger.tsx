@@ -979,6 +979,19 @@ function Messenger() {
                     </button>
                   </>
                 )}
+                {ativo.tipo === "grupo" && (
+                  <button
+                    type="button"
+                    className="msn-tool"
+                    title="Membros do grupo"
+                    onClick={() => {
+                      const g = grupos.find((x) => x.id === ativo.id);
+                      if (g) setGrupoAberto(g);
+                    }}
+                  >
+                    ⚙️
+                  </button>
+                )}
                 <input
                   className="msn-input hidden w-[150px] sm:block"
                   placeholder="Buscar no histórico"
