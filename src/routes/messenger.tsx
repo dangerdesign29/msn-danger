@@ -264,6 +264,13 @@ function Messenger() {
     let vivo = true;
     aplicarTema(lerTemaLocal());
     setTema(lerTemaLocal());
+    const cache = lerListas();
+    if (cache) {
+      if (cache.perfil) setPerfil(cache.perfil);
+      setContatos(cache.contatos);
+      contatosRef.current = cache.contatos;
+      setGrupos(cache.grupos);
+    }
     void supabase.auth.getSession().then(async ({ data }) => {
       if (!vivo) return;
       const session = data.session;
