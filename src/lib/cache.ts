@@ -26,8 +26,14 @@ function gravar(chave: string, valor: unknown) {
   }
 }
 
-export function salvarListas(perfil: Perfil | null, contatos: Contato[], grupos: Grupo[]) {
-  gravar(CHAVE_LISTAS, { perfil, contatos, grupos, em: Date.now() } satisfies Listas);
+export function salvarListas(parcial: Partial<Omit<Listas, "em">>) {
+  const atual = ler<Listas>(CHAVE_LISTAS);
+  gravar(CHAVE_LISTAS, {
+    perfil: parcial.perfil ?? atual?.perfil ?? null,
+    contatos: parcial.contatos ?? atual?.contatos ?? [],
+    grupos: parcial.grupos ?? atual?.grupos ?? [],
+    em: Date.now(),
+  } satisfies Listas);
 }
 
 export function lerListas(): Listas | null {
