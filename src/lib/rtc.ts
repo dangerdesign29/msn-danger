@@ -23,8 +23,27 @@ export const SERVIDORES_ICE: RTCConfiguration = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
+    { urls: "stun:global.stun.twilio.com:3478" },
+    // TURN publico (Open Relay) — garante conexao mesmo atras de NAT/4G.
+    {
+      urls: [
+        "turn:openrelay.metered.ca:80",
+        "turn:openrelay.metered.ca:443",
+        "turn:openrelay.metered.ca:443?transport=tcp",
+      ],
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
   ],
+  iceCandidatePoolSize: 4,
 };
+
+/** Canal compartilhado por uma conversa (usado pelo indicador de digitando). */
+export function canalConversa(tipo: "dm" | "grupo", id: string, meuId: string) {
+  if (tipo === "grupo") return `msn-digitando-grupo-${id}`;
+  const par = [meuId, id].sort();
+  return `msn-digitando-dm-${par[0]}-${par[1]}`;
+}
 
 export function canalPessoal(userId: string) {
   return `msn-sinal-${userId}`;

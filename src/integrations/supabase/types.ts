@@ -186,6 +186,36 @@ export type Database = {
         }
         Relationships: []
       }
+      push_assinaturas: {
+        Row: {
+          atualizado_em: string
+          auth: string
+          criado_em: string
+          endpoint: string
+          id: string
+          p256dh: string
+          usuario_id: string
+        }
+        Insert: {
+          atualizado_em?: string
+          auth: string
+          criado_em?: string
+          endpoint: string
+          id?: string
+          p256dh: string
+          usuario_id: string
+        }
+        Update: {
+          atualizado_em?: string
+          auth?: string
+          criado_em?: string
+          endpoint?: string
+          id?: string
+          p256dh?: string
+          usuario_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -193,6 +223,10 @@ export type Database = {
     Functions: {
       adicionar_contato: { Args: { _email: string }; Returns: string }
       adicionar_contato_id: { Args: { _alvo: string }; Returns: string }
+      adicionar_membro: {
+        Args: { _grupo: string; _usuario: string }
+        Returns: string
+      }
       buscar_usuarios: {
         Args: { _termo: string }
         Returns: {
@@ -210,6 +244,17 @@ export type Database = {
         Returns: string
       }
       eh_meu_contato: { Args: { _outro: string }; Returns: boolean }
+      membros_grupo: {
+        Args: { _grupo: string }
+        Returns: {
+          avatar_url: string
+          email: string
+          id: string
+          nome: string
+          status: string
+        }[]
+      }
+      sair_grupo: { Args: { _grupo: string }; Returns: string }
       sou_membro: { Args: { _grupo: string }; Returns: boolean }
     }
     Enums: {

@@ -7,19 +7,23 @@ import { BuscarModal } from "@/components/msn/BuscarModal";
 import { CallModal, type ChamadaAtiva } from "@/components/msn/CallModal";
 import { DrawModal } from "@/components/msn/DrawModal";
 import { GamesModal, type JogoId } from "@/components/msn/GamesModal";
+import { GrupoModal } from "@/components/msn/GrupoModal";
 import { InstalarApp } from "@/components/msn/InstalarApp";
 import { JogoOnline, type Sessao } from "@/components/msn/JogoOnline";
 import { ThemeModal } from "@/components/msn/ThemeModal";
 import { WinksModal } from "@/components/msn/WinksModal";
 import { supabase } from "@/integrations/supabase/client";
 import { enviarAnexo } from "@/lib/anexos";
+import { estaOnline, lerConversa, lerListas, salvarConversa, salvarListas } from "@/lib/cache";
 import {
   jaPerguntou,
   mostrarNotificacao,
   pedirPermissao,
   permissaoAtual,
 } from "@/lib/notificacoes";
-import { canalPessoal, enviarSinal, type Sinal } from "@/lib/rtc";
+import { enviarPush } from "@/lib/push.functions";
+import { ativarPush, registrarServiceWorker, suportaPush } from "@/lib/push";
+import { canalConversa, canalPessoal, enviarSinal, type Sinal } from "@/lib/rtc";
 import { PADROES, pararVibracao, vibrar } from "@/lib/vibrar";
 import {
   EMOTICON_PALETTE,
@@ -97,6 +101,10 @@ function Messenger() {
   const [jogoAguardando, setJogoAguardando] = useState(false);
   const [convite, setConvite] = useState<{ de: string; nome: string; jogo: JogoId } | null>(null);
   const [pedirNotif, setPedirNotif] = useState(false);
+  const [online, setOnline] = useState(true);
+  const [digitando, setDigitando] = useState<string | null>(null);
+  const [grupoAberto, setGrupoAberto] = useState<Grupo | null>(null);
+  const [pushAtivo, setPushAtivo] = useState(false);
 
   const ativoRef = useRef<Conversa | null>(null);
   ativoRef.current = ativo;
@@ -108,6 +116,10 @@ function Messenger() {
   const avatarRef = useRef<HTMLInputElement | null>(null);
   const anexoRef = useRef<HTMLInputElement | null>(null);
   const gravadorRef = useRef<MediaRecorder | null>(null);
+  const digitandoCanalRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const digitandoEnviadoRef = useRef(0);
+  const pararDigitarRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const limparDigitandoRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const registrarSinal = useCallback((fn: ((s: Sinal) => void) | null) => {
     sinalRef.current = fn;
@@ -163,11 +175,14 @@ function Messenger() {
     });
     setContatos(lista);
     contatosRef.current = lista;
+    salvarListas({ contatos: lista });
   }, []);
 
   const carregarGrupos = useCallback(async () => {
     const { data } = await supabase.from("grupos").select("*").order("criado_em");
-    setGrupos((data ?? []) as unknown as Grupo[]);
+    const lista = (data ?? []) as unknown as Grupo[];
+    setGrupos(lista);
+    salvarListas({ grupos: lista });
   }, []);
 
   const filtroConversa = useCallback((uid: string, c: Conversa) => {
@@ -197,12 +212,19 @@ function Messenger() {
 
   const carregarMensagens = useCallback(
     async (uid: string, c: Conversa) => {
+      const cache = lerConversa(c);
+      if (cache.length > 0) setMensagens(cache);
       const { data } = await consultaBase(uid, c)
         .order("enviada_em", { ascending: false })
         .limit(PAGINA);
+      if (!data) {
+        setTemMais(false);
+        return;
+      }
       const lista = ((data ?? []) as unknown as Mensagem[]).slice().reverse();
       setMensagens(lista);
       setTemMais((data ?? []).length === PAGINA);
+      salvarConversa(c, lista);
       await marcarLidas(uid, c);
     },
     [consultaBase, marcarLidas],
@@ -242,6 +264,13 @@ function Messenger() {
     let vivo = true;
     aplicarTema(lerTemaLocal());
     setTema(lerTemaLocal());
+    const cache = lerListas();
+    if (cache) {
+      if (cache.perfil) setPerfil(cache.perfil);
+      setContatos(cache.contatos);
+      contatosRef.current = cache.contatos;
+      setGrupos(cache.grupos);
+    }
     void supabase.auth.getSession().then(async ({ data }) => {
       if (!vivo) return;
       const session = data.session;
@@ -254,6 +283,7 @@ function Messenger() {
       const { data: p } = await supabase.from("perfis").select("*").eq("id", uid).maybeSingle();
       if (p) {
         setPerfil(p as unknown as Perfil);
+        salvarListas({ perfil: p as unknown as Perfil });
         const salvo = (p as { tema?: unknown }).tema as Tema | null;
         if (salvo && typeof salvo === "object") {
           const t = { ...TEMA_PADRAO, ...salvo };
@@ -459,6 +489,85 @@ function Messenger() {
     return;
   }, [userId]);
 
+  // ---------- push real (service worker) ----------
+  useEffect(() => {
+    if (!userId || !suportaPush()) return;
+    void registrarServiceWorker();
+    if (permissaoAtual() === "granted") {
+      void ativarPush().then((r) => setPushAtivo(r === "ok"));
+    }
+  }, [userId]);
+
+  // ---------- modo offline ----------
+  useEffect(() => {
+    setOnline(estaOnline());
+    const ligou = () => setOnline(true);
+    const caiu = () => setOnline(false);
+    window.addEventListener("online", ligou);
+    window.addEventListener("offline", caiu);
+    return () => {
+      window.removeEventListener("online", ligou);
+      window.removeEventListener("offline", caiu);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (ativo && mensagens.length > 0 && !buscandoMsg) salvarConversa(ativo, mensagens);
+  }, [ativo, mensagens, buscandoMsg]);
+
+  // ---------- "digitando…" em tempo real ----------
+  useEffect(() => {
+    if (!userId || !ativo) {
+      setDigitando(null);
+      return;
+    }
+    const canal = supabase
+      .channel(canalConversa(ativo.tipo, ativo.id, userId), {
+        config: { broadcast: { self: false } },
+      })
+      .on("broadcast", { event: "digitando" }, ({ payload }) => {
+        const p = payload as { de: string; nome: string; ativo: boolean };
+        if (p.de === userId) return;
+        if (limparDigitandoRef.current) clearTimeout(limparDigitandoRef.current);
+        if (!p.ativo) {
+          setDigitando(null);
+          return;
+        }
+        setDigitando(p.nome);
+        limparDigitandoRef.current = setTimeout(() => setDigitando(null), 5000);
+      })
+      .subscribe();
+    digitandoCanalRef.current = canal;
+    return () => {
+      digitandoCanalRef.current = null;
+      setDigitando(null);
+      if (limparDigitandoRef.current) clearTimeout(limparDigitandoRef.current);
+      void supabase.removeChannel(canal);
+    };
+  }, [userId, ativo]);
+
+  const avisarDigitando = useCallback(
+    (ativoAgora: boolean) => {
+      const canal = digitandoCanalRef.current;
+      if (!canal || !userId) return;
+      const agora = Date.now();
+      if (ativoAgora && agora - digitandoEnviadoRef.current < 1800) return;
+      digitandoEnviadoRef.current = ativoAgora ? agora : 0;
+      void canal.send({
+        type: "broadcast",
+        event: "digitando",
+        payload: { de: userId, nome: perfil?.nome ?? "Contato", ativo: ativoAgora },
+      });
+    },
+    [userId, perfil?.nome],
+  );
+
+  const digitou = useCallback(() => {
+    avisarDigitando(true);
+    if (pararDigitarRef.current) clearTimeout(pararDigitarRef.current);
+    pararDigitarRef.current = setTimeout(() => avisarDigitando(false), 2500);
+  }, [avisarDigitando]);
+
   useEffect(() => {
     if (!menu) return;
     const fechar = () => setMenu(null);
@@ -540,12 +649,25 @@ function Messenger() {
       setMensagens((m) => [...m, data as unknown as Mensagem]);
     }
     playSound("send");
+    void enviarPush({
+      data: {
+        ...(destino.tipo === "grupo" ? { grupoId: destino.id } : { paraId: destino.id }),
+        titulo:
+          destino.tipo === "grupo"
+            ? `${perfil?.nome ?? "Alguém"} em ${destino.nome}`
+            : (perfil?.nome ?? "Nova mensagem"),
+        corpo:
+          tipo === "texto" ? conteudo.slice(0, 120) : tipo === "anexo" ? "📎 Enviou um arquivo" : "✨ Enviou um wink",
+      },
+    }).catch(() => {});
   }
 
   async function enviarTexto() {
     const conteudo = texto.trim();
     if (!conteudo) return;
     setTexto("");
+    if (pararDigitarRef.current) clearTimeout(pararDigitarRef.current);
+    avisarDigitando(false);
     await enviarEm(ativo, conteudo, "texto");
   }
 
@@ -681,6 +803,13 @@ function Messenger() {
   return (
     <div className={`msn-root ${tremendo ? "msn-shaking" : ""}`}>
       <h1 className="sr-only">Windows Live Messenger</h1>
+
+      {!online && (
+        <div className="msn-offline" role="status">
+          📴 Sem internet — mostrando conversas salvas no aparelho
+        </div>
+      )}
+      {online && pushAtivo && <span className="sr-only">Notificações push ativas</span>}
 
       <input ref={avatarRef} type="file" accept="image/*" className="hidden" onChange={trocarAvatar} />
       <input
@@ -857,6 +986,19 @@ function Messenger() {
                     </button>
                   </>
                 )}
+                {ativo.tipo === "grupo" && (
+                  <button
+                    type="button"
+                    className="msn-tool"
+                    title="Membros do grupo"
+                    onClick={() => {
+                      const g = grupos.find((x) => x.id === ativo.id);
+                      if (g) setGrupoAberto(g);
+                    }}
+                  >
+                    ⚙️
+                  </button>
+                )}
                 <input
                   className="msn-input hidden w-[150px] sm:block"
                   placeholder="Buscar no histórico"
@@ -981,13 +1123,27 @@ function Messenger() {
                   </div>
                 )}
 
+                {digitando && (
+                  <div className="msn-digitando" aria-live="polite">
+                    <span className="msn-digitando-bolinhas">
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                    {digitando} está digitando…
+                  </div>
+                )}
+
                 <div className="flex gap-1.5">
                   <textarea
                     className="msn-textarea"
                     placeholder="Digite sua mensagem..."
                     aria-label="Mensagem"
                     value={texto}
-                    onChange={(e) => setTexto(e.target.value)}
+                    onChange={(e) => {
+                      setTexto(e.target.value);
+                      if (e.target.value.trim()) digitou();
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && !e.shiftKey) {
                         e.preventDefault();
@@ -1303,7 +1459,11 @@ function Messenger() {
             onClick={async () => {
               const r = await pedirPermissao();
               setPedirNotif(false);
-              if (r === "granted") notificar("Notificações ativadas", "Agora você não perde nada 🔔");
+              if (r === "granted") {
+                notificar("Notificações ativadas", "Agora você não perde nada 🔔");
+                const p = await ativarPush();
+                setPushAtivo(p === "ok");
+              }
             }}
           >
             Permitir
@@ -1315,6 +1475,20 @@ function Messenger() {
       )}
 
       {!pedirNotif && <InstalarApp />}
+
+      {grupoAberto && (
+        <GrupoModal
+          grupo={grupoAberto}
+          contatos={contatos}
+          onClose={() => setGrupoAberto(null)}
+          onMudou={() => void carregarGrupos()}
+          onSaiu={() => {
+            setGrupoAberto(null);
+            setAtivo(null);
+            void carregarGrupos();
+          }}
+        />
+      )}
     </div>
   );
 }
