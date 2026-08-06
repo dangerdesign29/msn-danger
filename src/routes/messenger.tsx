@@ -283,6 +283,7 @@ function Messenger() {
       const { data: p } = await supabase.from("perfis").select("*").eq("id", uid).maybeSingle();
       if (p) {
         setPerfil(p as unknown as Perfil);
+        salvarListas({ perfil: p as unknown as Perfil });
         const salvo = (p as { tema?: unknown }).tema as Tema | null;
         if (salvo && typeof salvo === "object") {
           const t = { ...TEMA_PADRAO, ...salvo };
@@ -487,6 +488,85 @@ function Messenger() {
     }
     return;
   }, [userId]);
+
+  // ---------- push real (service worker) ----------
+  useEffect(() => {
+    if (!userId || !suportaPush()) return;
+    void registrarServiceWorker();
+    if (permissaoAtual() === "granted") {
+      void ativarPush().then((r) => setPushAtivo(r === "ok"));
+    }
+  }, [userId]);
+
+  // ---------- modo offline ----------
+  useEffect(() => {
+    setOnline(estaOnline());
+    const ligou = () => setOnline(true);
+    const caiu = () => setOnline(false);
+    window.addEventListener("online", ligou);
+    window.addEventListener("offline", caiu);
+    return () => {
+      window.removeEventListener("online", ligou);
+      window.removeEventListener("offline", caiu);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (ativo && mensagens.length > 0 && !buscandoMsg) salvarConversa(ativo, mensagens);
+  }, [ativo, mensagens, buscandoMsg]);
+
+  // ---------- "digitando…" em tempo real ----------
+  useEffect(() => {
+    if (!userId || !ativo) {
+      setDigitando(null);
+      return;
+    }
+    const canal = supabase
+      .channel(canalConversa(ativo.tipo, ativo.id, userId), {
+        config: { broadcast: { self: false } },
+      })
+      .on("broadcast", { event: "digitando" }, ({ payload }) => {
+        const p = payload as { de: string; nome: string; ativo: boolean };
+        if (p.de === userId) return;
+        if (limparDigitandoRef.current) clearTimeout(limparDigitandoRef.current);
+        if (!p.ativo) {
+          setDigitando(null);
+          return;
+        }
+        setDigitando(p.nome);
+        limparDigitandoRef.current = setTimeout(() => setDigitando(null), 5000);
+      })
+      .subscribe();
+    digitandoCanalRef.current = canal;
+    return () => {
+      digitandoCanalRef.current = null;
+      setDigitando(null);
+      if (limparDigitandoRef.current) clearTimeout(limparDigitandoRef.current);
+      void supabase.removeChannel(canal);
+    };
+  }, [userId, ativo]);
+
+  const avisarDigitando = useCallback(
+    (ativoAgora: boolean) => {
+      const canal = digitandoCanalRef.current;
+      if (!canal || !userId) return;
+      const agora = Date.now();
+      if (ativoAgora && agora - digitandoEnviadoRef.current < 1800) return;
+      digitandoEnviadoRef.current = ativoAgora ? agora : 0;
+      void canal.send({
+        type: "broadcast",
+        event: "digitando",
+        payload: { de: userId, nome: perfil?.nome ?? "Contato", ativo: ativoAgora },
+      });
+    },
+    [userId, perfil?.nome],
+  );
+
+  const digitou = useCallback(() => {
+    avisarDigitando(true);
+    if (pararDigitarRef.current) clearTimeout(pararDigitarRef.current);
+    pararDigitarRef.current = setTimeout(() => avisarDigitando(false), 2500);
+  }, [avisarDigitando]);
 
   useEffect(() => {
     if (!menu) return;
