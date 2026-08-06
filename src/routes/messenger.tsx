@@ -1122,7 +1122,10 @@ function Messenger() {
                     placeholder="Digite sua mensagem..."
                     aria-label="Mensagem"
                     value={texto}
-                    onChange={(e) => setTexto(e.target.value)}
+                    onChange={(e) => {
+                      setTexto(e.target.value);
+                      if (e.target.value.trim()) digitou();
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && !e.shiftKey) {
                         e.preventDefault();
