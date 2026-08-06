@@ -649,12 +649,25 @@ function Messenger() {
       setMensagens((m) => [...m, data as unknown as Mensagem]);
     }
     playSound("send");
+    void enviarPush({
+      data: {
+        ...(destino.tipo === "grupo" ? { grupoId: destino.id } : { paraId: destino.id }),
+        titulo:
+          destino.tipo === "grupo"
+            ? `${perfil?.nome ?? "Alguém"} em ${destino.nome}`
+            : (perfil?.nome ?? "Nova mensagem"),
+        corpo:
+          tipo === "texto" ? conteudo.slice(0, 120) : tipo === "anexo" ? "📎 Enviou um arquivo" : "✨ Enviou um wink",
+      },
+    }).catch(() => {});
   }
 
   async function enviarTexto() {
     const conteudo = texto.trim();
     if (!conteudo) return;
     setTexto("");
+    if (pararDigitarRef.current) clearTimeout(pararDigitarRef.current);
+    avisarDigitando(false);
     await enviarEm(ativo, conteudo, "texto");
   }
 
