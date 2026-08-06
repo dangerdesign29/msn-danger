@@ -175,14 +175,14 @@ function Messenger() {
     });
     setContatos(lista);
     contatosRef.current = lista;
-    salvarListas(null, lista, []);
+    salvarListas({ contatos: lista });
   }, []);
 
   const carregarGrupos = useCallback(async () => {
     const { data } = await supabase.from("grupos").select("*").order("criado_em");
     const lista = (data ?? []) as unknown as Grupo[];
     setGrupos(lista);
-    salvarListas(null, contatosRef.current, lista);
+    salvarListas({ grupos: lista });
   }, []);
 
   const filtroConversa = useCallback((uid: string, c: Conversa) => {
