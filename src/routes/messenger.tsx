@@ -101,6 +101,10 @@ function Messenger() {
   const [jogoAguardando, setJogoAguardando] = useState(false);
   const [convite, setConvite] = useState<{ de: string; nome: string; jogo: JogoId } | null>(null);
   const [pedirNotif, setPedirNotif] = useState(false);
+  const [online, setOnline] = useState(true);
+  const [digitando, setDigitando] = useState<string | null>(null);
+  const [grupoAberto, setGrupoAberto] = useState<Grupo | null>(null);
+  const [pushAtivo, setPushAtivo] = useState(false);
 
   const ativoRef = useRef<Conversa | null>(null);
   ativoRef.current = ativo;
@@ -112,6 +116,10 @@ function Messenger() {
   const avatarRef = useRef<HTMLInputElement | null>(null);
   const anexoRef = useRef<HTMLInputElement | null>(null);
   const gravadorRef = useRef<MediaRecorder | null>(null);
+  const digitandoCanalRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const digitandoEnviadoRef = useRef(0);
+  const pararDigitarRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const limparDigitandoRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const registrarSinal = useCallback((fn: ((s: Sinal) => void) | null) => {
     sinalRef.current = fn;
@@ -167,11 +175,14 @@ function Messenger() {
     });
     setContatos(lista);
     contatosRef.current = lista;
+    salvarListas(null, lista, []);
   }, []);
 
   const carregarGrupos = useCallback(async () => {
     const { data } = await supabase.from("grupos").select("*").order("criado_em");
-    setGrupos((data ?? []) as unknown as Grupo[]);
+    const lista = (data ?? []) as unknown as Grupo[];
+    setGrupos(lista);
+    salvarListas(null, contatosRef.current, lista);
   }, []);
 
   const filtroConversa = useCallback((uid: string, c: Conversa) => {
@@ -201,12 +212,19 @@ function Messenger() {
 
   const carregarMensagens = useCallback(
     async (uid: string, c: Conversa) => {
+      const cache = lerConversa(c);
+      if (cache.length > 0) setMensagens(cache);
       const { data } = await consultaBase(uid, c)
         .order("enviada_em", { ascending: false })
         .limit(PAGINA);
+      if (!data) {
+        setTemMais(false);
+        return;
+      }
       const lista = ((data ?? []) as unknown as Mensagem[]).slice().reverse();
       setMensagens(lista);
       setTemMais((data ?? []).length === PAGINA);
+      salvarConversa(c, lista);
       await marcarLidas(uid, c);
     },
     [consultaBase, marcarLidas],
