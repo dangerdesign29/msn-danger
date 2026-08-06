@@ -1452,7 +1452,11 @@ function Messenger() {
             onClick={async () => {
               const r = await pedirPermissao();
               setPedirNotif(false);
-              if (r === "granted") notificar("Notificações ativadas", "Agora você não perde nada 🔔");
+              if (r === "granted") {
+                notificar("Notificações ativadas", "Agora você não perde nada 🔔");
+                const p = await ativarPush();
+                setPushAtivo(p === "ok");
+              }
             }}
           >
             Permitir
@@ -1464,6 +1468,20 @@ function Messenger() {
       )}
 
       {!pedirNotif && <InstalarApp />}
+
+      {grupoAberto && (
+        <GrupoModal
+          grupo={grupoAberto}
+          contatos={contatos}
+          onClose={() => setGrupoAberto(null)}
+          onMudou={() => void carregarGrupos()}
+          onSaiu={() => {
+            setGrupoAberto(null);
+            setAtivo(null);
+            void carregarGrupos();
+          }}
+        />
+      )}
     </div>
   );
 }
