@@ -1427,6 +1427,7 @@ function Messenger() {
                   className="msn-btn-desligar"
                   onClick={() => {
                     void enviarSinal(recebendo.outroId, { tipo: "chamada-recusada", de: userId });
+                    pararToque();
                     pararVibracao();
                     setRecebendo(null);
                   }}
@@ -1437,6 +1438,7 @@ function Messenger() {
                   type="button"
                   className="msn-btn px-4"
                   onClick={() => {
+                    pararToque();
                     pararVibracao();
                     setChamada(recebendo);
                     setRecebendo(null);
@@ -1453,9 +1455,11 @@ function Messenger() {
       {chamada && userId && (
         <CallModal
           userId={userId}
+          meuNome={perfil?.nome ?? undefined}
           chamada={chamada}
           registrarSinal={registrarSinal}
           onEncerrar={() => {
+            pararToque();
             pararVibracao();
             setChamada(null);
           }}
