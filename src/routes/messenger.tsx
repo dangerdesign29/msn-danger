@@ -435,13 +435,19 @@ function Messenger() {
           }
           setRecebendo({
             outroId: s.de,
-            nome: nomeDe(s.de),
+            nome: s.nome || nomeDe(s.de),
             video: s.video,
             papel: "recebendo",
             sdp: s.sdp,
           });
           playSound("nudge");
+          tocarToque("entrada");
           vibrar(PADROES.chamada);
+          mostrarNotificacao(
+            `${s.nome || nomeDe(s.de)} está te chamando`,
+            s.video ? "📹 Chamada de vídeo — toque para atender" : "📞 Chamada de voz — toque para atender",
+            { tag: "msn-chamada", sempre: true, urgente: true },
+          );
           return;
         }
         if (s.tipo === "jogo-convite") {
@@ -468,6 +474,7 @@ function Messenger() {
         }
         if (s.tipo === "chamada-fim" && !sinalRef.current) {
           setRecebendo(null);
+          pararToque();
           pararVibracao();
           return;
         }
