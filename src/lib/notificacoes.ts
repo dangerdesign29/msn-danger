@@ -84,16 +84,3 @@ export function mostrarNotificacao(titulo: string, corpo: string, extras: Extras
 
   classica();
 }
-
-/** Bloco morto removido abaixo. */
-function _legado(titulo: string, opcoes: NotificationOptions) {
-  try {
-    const n = new Notification(titulo, opcoes);
-    n.onclick = () => {
-      window.focus();
-      n.close();
-    };
-  } catch {
-    /* ignora */
-  }
-}
