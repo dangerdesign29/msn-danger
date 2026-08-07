@@ -15,7 +15,7 @@ export type ChamadaAtiva = {
 
 type Props = {
   userId: string;
-  meuNome?: string;
+  meuNome?: string | undefined;
   chamada: ChamadaAtiva;
   registrarSinal: (fn: ((s: Sinal) => void) | null) => void;
   onEncerrar: () => void;
