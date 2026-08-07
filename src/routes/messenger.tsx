@@ -499,8 +499,9 @@ function Messenger() {
 
   // ---------- push real (service worker) ----------
   useEffect(() => {
-    if (!userId || !suportaPush()) return;
+    if (!userId) return;
     void registrarServiceWorker();
+    if (!suportaPush()) return;
     if (permissaoAtual() === "granted") {
       void ativarPush().then((r) => setPushAtivo(r === "ok"));
     }
