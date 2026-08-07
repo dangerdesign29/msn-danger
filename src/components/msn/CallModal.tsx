@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
-import { enviarSinal, SERVIDORES_ICE, type Sinal } from "@/lib/rtc";
+import { enviarSinal, fecharCanalSinal, SERVIDORES_ICE, type Sinal } from "@/lib/rtc";
 import { playSound } from "@/lib/msn";
+import { pararToque, tocarToque } from "@/lib/toque";
 import { PADROES, pararVibracao, vibrar } from "@/lib/vibrar";
 
 export type ChamadaAtiva = {
@@ -14,12 +15,13 @@ export type ChamadaAtiva = {
 
 type Props = {
   userId: string;
+  meuNome?: string;
   chamada: ChamadaAtiva;
   registrarSinal: (fn: ((s: Sinal) => void) | null) => void;
   onEncerrar: () => void;
 };
 
-export function CallModal({ userId, chamada, registrarSinal, onEncerrar }: Props) {
+export function CallModal({ userId, meuNome, chamada, registrarSinal, onEncerrar }: Props) {
   const [estado, setEstado] = useState<"preparando" | "chamando" | "ativa" | "erro">("preparando");
   const [erro, setErro] = useState("");
   const [semMic, setSemMic] = useState(false);
@@ -30,8 +32,10 @@ export function CallModal({ userId, chamada, registrarSinal, onEncerrar }: Props
   const localRef = useRef<MediaStream | null>(null);
   const videoLocal = useRef<HTMLVideoElement | null>(null);
   const videoRemoto = useRef<HTMLVideoElement | null>(null);
+  const audioRemoto = useRef<HTMLAudioElement | null>(null);
   const pendentes = useRef<RTCIceCandidateInit[]>([]);
   const encerrado = useRef(false);
+  const semRespostaRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     let vivo = true;
@@ -66,8 +70,18 @@ export function CallModal({ userId, chamada, registrarSinal, onEncerrar }: Props
 
       pc.ontrack = (ev) => {
         const [remoto] = ev.streams;
-        if (videoRemoto.current && remoto) videoRemoto.current.srcObject = remoto;
+        if (!remoto) return;
+        // Audio sempre em um <audio> proprio: garante som mesmo em chamada de voz.
+        if (audioRemoto.current) {
+          audioRemoto.current.srcObject = remoto;
+          void audioRemoto.current.play().catch(() => undefined);
+        }
+        if (videoRemoto.current) {
+          videoRemoto.current.srcObject = remoto;
+          void videoRemoto.current.play().catch(() => undefined);
+        }
         setEstado("ativa");
+        pararToque();
         pararVibracao();
       };
       pc.onicecandidate = (ev) => {
@@ -80,8 +94,13 @@ export function CallModal({ userId, chamada, registrarSinal, onEncerrar }: Props
         }
       };
       pc.onconnectionstatechange = () => {
-        if (pc.connectionState === "connected") setEstado("ativa");
+        if (pc.connectionState === "connected") {
+          setEstado("ativa");
+          pararToque();
+          pararVibracao();
+        }
         if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+          pararToque();
           setEstado("erro");
           setErro("A conexão caiu.");
         }
@@ -96,6 +115,7 @@ export function CallModal({ userId, chamada, registrarSinal, onEncerrar }: Props
           if (pc.remoteDescription) await pc.addIceCandidate(new RTCIceCandidate(s.candidato));
           else pendentes.current.push(s.candidato);
         } else if (s.tipo === "chamada-fim" || s.tipo === "chamada-recusada") {
+          pararToque();
           onEncerrar();
         }
       });
@@ -105,19 +125,36 @@ export function CallModal({ userId, chamada, registrarSinal, onEncerrar }: Props
         await pc.setLocalDescription(oferta);
         setEstado("chamando");
         playSound("nudge");
+        tocarToque("saida");
         vibrar(PADROES.chamada);
         await enviarSinal(chamada.outroId, {
           tipo: "chamada-oferta",
           de: userId,
-          nome: "",
+          nome: meuNome ?? "",
           video: chamada.video,
           sdp: oferta,
         });
+        // Sem resposta em 40s: encerra dos dois lados.
+        semRespostaRef.current = setTimeout(() => {
+          if (pc.connectionState !== "connected") {
+            setEstado("erro");
+            setErro("Ninguém atendeu a chamada.");
+            pararToque();
+            void enviarSinal(chamada.outroId, {
+              tipo: "chamada-fim",
+              de: userId,
+              motivo: "sem-resposta",
+            });
+            setTimeout(onEncerrar, 1600);
+          }
+        }, 40000);
       } else if (chamada.sdp) {
         await pc.setRemoteDescription(new RTCSessionDescription(chamada.sdp));
         const resposta = await pc.createAnswer();
         await pc.setLocalDescription(resposta);
         await enviarSinal(chamada.outroId, { tipo: "chamada-resposta", de: userId, sdp: resposta });
+        for (const c of pendentes.current) await pc.addIceCandidate(new RTCIceCandidate(c));
+        pendentes.current = [];
         setEstado("ativa");
       }
     }
@@ -127,12 +164,19 @@ export function CallModal({ userId, chamada, registrarSinal, onEncerrar }: Props
     return () => {
       vivo = false;
       registrarSinal(null);
+      if (semRespostaRef.current) clearTimeout(semRespostaRef.current);
+      pararToque();
       pararVibracao();
       localRef.current?.getTracks().forEach((t) => t.stop());
       pcRef.current?.close();
+      fecharCanalSinal(chamada.outroId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (estado === "ativa" && semRespostaRef.current) clearTimeout(semRespostaRef.current);
+  }, [estado]);
 
   useEffect(() => {
     if (estado !== "ativa") return;
@@ -145,6 +189,7 @@ export function CallModal({ userId, chamada, registrarSinal, onEncerrar }: Props
       encerrado.current = true;
       void enviarSinal(chamada.outroId, { tipo: "chamada-fim", de: userId });
     }
+    pararToque();
     onEncerrar();
   }
 
@@ -183,6 +228,7 @@ export function CallModal({ userId, chamada, registrarSinal, onEncerrar }: Props
         </div>
 
         <div className="msn-chamada-palco">
+          <audio ref={audioRemoto} autoPlay playsInline className="hidden" />
           {chamada.video ? (
             <>
               <video ref={videoRemoto} autoPlay playsInline className="msn-video-remoto" />
