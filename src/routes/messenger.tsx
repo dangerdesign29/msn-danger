@@ -24,6 +24,7 @@ import {
 import { enviarPush } from "@/lib/push.functions";
 import { ativarPush, registrarServiceWorker, suportaPush } from "@/lib/push";
 import { canalConversa, canalPessoal, enviarSinal, type Sinal } from "@/lib/rtc";
+import { pararToque, tocarToque } from "@/lib/toque";
 import { PADROES, pararVibracao, vibrar } from "@/lib/vibrar";
 import {
   EMOTICON_PALETTE,
@@ -435,13 +436,19 @@ function Messenger() {
           }
           setRecebendo({
             outroId: s.de,
-            nome: nomeDe(s.de),
+            nome: s.nome || nomeDe(s.de),
             video: s.video,
             papel: "recebendo",
             sdp: s.sdp,
           });
           playSound("nudge");
+          tocarToque("entrada");
           vibrar(PADROES.chamada);
+          mostrarNotificacao(
+            `${s.nome || nomeDe(s.de)} está te chamando`,
+            s.video ? "📹 Chamada de vídeo — toque para atender" : "📞 Chamada de voz — toque para atender",
+            { tag: "msn-chamada", sempre: true, urgente: true },
+          );
           return;
         }
         if (s.tipo === "jogo-convite") {
@@ -468,6 +475,7 @@ function Messenger() {
         }
         if (s.tipo === "chamada-fim" && !sinalRef.current) {
           setRecebendo(null);
+          pararToque();
           pararVibracao();
           return;
         }
@@ -602,6 +610,14 @@ function Messenger() {
     if (!ativo || ativo.tipo !== "dm") return;
     vibrar(PADROES.clique);
     setChamada({ outroId: ativo.id, nome: ativo.nome, video, papel: "chamando" });
+    // Avisa por push para o contato atender mesmo com o app fechado.
+    void enviarPush({
+      data: {
+        paraId: ativo.id,
+        titulo: `${perfil?.nome ?? "Alguém"} está te chamando`,
+        corpo: video ? "📹 Chamada de vídeo — abra para atender" : "📞 Chamada de voz — abra para atender",
+      },
+    }).catch(() => {});
   }
 
   function convidarJogo(jogo: JogoId) {
@@ -1411,6 +1427,7 @@ function Messenger() {
                   className="msn-btn-desligar"
                   onClick={() => {
                     void enviarSinal(recebendo.outroId, { tipo: "chamada-recusada", de: userId });
+                    pararToque();
                     pararVibracao();
                     setRecebendo(null);
                   }}
@@ -1421,6 +1438,7 @@ function Messenger() {
                   type="button"
                   className="msn-btn px-4"
                   onClick={() => {
+                    pararToque();
                     pararVibracao();
                     setChamada(recebendo);
                     setRecebendo(null);
@@ -1437,9 +1455,11 @@ function Messenger() {
       {chamada && userId && (
         <CallModal
           userId={userId}
+          meuNome={perfil?.nome ?? undefined}
           chamada={chamada}
           registrarSinal={registrarSinal}
           onEncerrar={() => {
+            pararToque();
             pararVibracao();
             setChamada(null);
           }}
