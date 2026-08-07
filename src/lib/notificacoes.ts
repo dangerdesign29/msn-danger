@@ -30,16 +30,41 @@ export async function pedirPermissao(): Promise<NotificationPermission | "indisp
   }
 }
 
-export function mostrarNotificacao(titulo: string, corpo: string, icone?: string) {
+type Extras = { icone?: string; tag?: string; sempre?: boolean; urgente?: boolean };
+
+/**
+ * Mostra a notificacao pelo Service Worker quando disponivel (obrigatorio no
+ * Android/PWA, onde `new Notification` lanca erro) e cai para o construtor
+ * classico no desktop.
+ */
+export function mostrarNotificacao(titulo: string, corpo: string, extras: Extras | string = {}) {
+  const op: Extras = typeof extras === "string" ? { icone: extras } : extras;
   if (!suportaNotificacao() || Notification.permission !== "granted") return;
-  if (typeof document !== "undefined" && document.visibilityState === "visible") return;
+  if (!op.sempre && typeof document !== "undefined" && document.visibilityState === "visible") {
+    return;
+  }
+
+  const opcoes: NotificationOptions & { vibrate?: number[]; renotify?: boolean } = {
+    body: corpo,
+    icon: op.icone ?? "/icons/icon-192.png",
+    badge: "/icons/icon-192.png",
+    tag: op.tag ?? "msn-mensagem",
+    renotify: true,
+    requireInteraction: op.urgente ?? false,
+    vibrate: op.urgente ? [200, 100, 200, 100, 200] : [80, 60, 80],
+    data: { url: "/messenger" },
+  };
+
+  if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+    void navigator.serviceWorker
+      .getRegistration()
+      .then((reg) => reg?.showNotification(titulo, opcoes))
+      .catch(() => undefined);
+    return;
+  }
+
   try {
-    const n = new Notification(titulo, {
-      body: corpo,
-      icon: icone ?? "/icons/icon-192.png",
-      badge: "/icons/icon-192.png",
-      tag: "msn-mensagem",
-    });
+    const n = new Notification(titulo, opcoes);
     n.onclick = () => {
       window.focus();
       n.close();
