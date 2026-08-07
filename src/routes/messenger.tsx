@@ -24,6 +24,7 @@ import {
 import { enviarPush } from "@/lib/push.functions";
 import { ativarPush, registrarServiceWorker, suportaPush } from "@/lib/push";
 import { canalConversa, canalPessoal, enviarSinal, type Sinal } from "@/lib/rtc";
+import { pararToque, tocarToque } from "@/lib/toque";
 import { PADROES, pararVibracao, vibrar } from "@/lib/vibrar";
 import {
   EMOTICON_PALETTE,
