@@ -610,6 +610,14 @@ function Messenger() {
     if (!ativo || ativo.tipo !== "dm") return;
     vibrar(PADROES.clique);
     setChamada({ outroId: ativo.id, nome: ativo.nome, video, papel: "chamando" });
+    // Avisa por push para o contato atender mesmo com o app fechado.
+    void enviarPush({
+      data: {
+        paraId: ativo.id,
+        titulo: `${perfil?.nome ?? "Alguém"} está te chamando`,
+        corpo: video ? "📹 Chamada de vídeo — abra para atender" : "📞 Chamada de voz — abra para atender",
+      },
+    }).catch(() => {});
   }
 
   function convidarJogo(jogo: JogoId) {
