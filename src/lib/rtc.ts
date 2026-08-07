@@ -49,16 +49,44 @@ export function canalPessoal(userId: string) {
   return `msn-sinal-${userId}`;
 }
 
-/** Envia um sinal para o canal pessoal do outro usuario. */
-export async function enviarSinal(paraId: string, payload: Sinal) {
-  const canal = supabase.channel(canalPessoal(paraId));
-  await new Promise<void>((resolve) => {
+/**
+ * Canais de envio reaproveitados por destinatario. Recriar canal a cada sinal
+ * atrasava (ou perdia) candidatos ICE — o que fazia a chamada nao conectar.
+ */
+const canaisEnvio = new Map<
+  string,
+  { canal: ReturnType<typeof supabase.channel>; pronto: Promise<void> }
+>();
+
+function obterCanalEnvio(paraId: string) {
+  const nome = canalPessoal(paraId);
+  const existente = canaisEnvio.get(nome);
+  if (existente) return existente;
+  const canal = supabase.channel(nome, { config: { broadcast: { self: false } } });
+  const pronto = new Promise<void>((resolve) => {
     canal.subscribe((status) => {
       if (status === "SUBSCRIBED" || status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
         resolve();
       }
     });
   });
+  const registro = { canal, pronto };
+  canaisEnvio.set(nome, registro);
+  return registro;
+}
+
+/** Envia um sinal para o canal pessoal do outro usuario. */
+export async function enviarSinal(paraId: string, payload: Sinal) {
+  const { canal, pronto } = obterCanalEnvio(paraId);
+  await pronto;
   await canal.send({ type: "broadcast", event: "sinal", payload });
-  setTimeout(() => void supabase.removeChannel(canal), 1500);
+}
+
+/** Libera o canal de sinalizacao quando a chamada/jogo termina. */
+export function fecharCanalSinal(paraId: string) {
+  const nome = canalPessoal(paraId);
+  const registro = canaisEnvio.get(nome);
+  if (!registro) return;
+  canaisEnvio.delete(nome);
+  void supabase.removeChannel(registro.canal);
 }
