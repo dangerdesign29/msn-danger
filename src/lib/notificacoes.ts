@@ -55,21 +55,32 @@ export function mostrarNotificacao(titulo: string, corpo: string, extras: Extras
     data: { url: "/messenger" },
   };
 
+  const classica = () => {
+    try {
+      const n = new Notification(titulo, opcoes);
+      n.onclick = () => {
+        window.focus();
+        n.close();
+      };
+    } catch {
+      /* ignora */
+    }
+  };
+
   if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
     void navigator.serviceWorker
       .getRegistration()
-      .then((reg) => reg?.showNotification(titulo, opcoes))
-      .catch(() => undefined);
+      .then(async (reg) => {
+        const alvo = reg ?? (await navigator.serviceWorker.ready.catch(() => null));
+        if (alvo) {
+          await alvo.showNotification(titulo, opcoes);
+          return;
+        }
+        classica();
+      })
+      .catch(() => classica());
     return;
   }
 
-  try {
-    const n = new Notification(titulo, opcoes);
-    n.onclick = () => {
-      window.focus();
-      n.close();
-    };
-  } catch {
-    /* ignora */
-  }
+  classica();
 }
