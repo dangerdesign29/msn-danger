@@ -980,6 +980,12 @@ function Messenger() {
       {!online && (
         <div className="msn-offline" role="status">
           📴 Sem internet — mostrando conversas salvas no aparelho
+          {naFila > 0 && ` · ${naFila} mensagem(ns) na fila`}
+        </div>
+      )}
+      {online && naFila > 0 && (
+        <div className="msn-offline" role="status">
+          ⏳ Enviando {naFila} mensagem(ns) que ficaram na fila…
         </div>
       )}
       {online && pushAtivo && <span className="sr-only">Notificações push ativas</span>}
