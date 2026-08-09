@@ -1,11 +1,15 @@
 /** Notificacoes do navegador (permissao + exibicao) para o Messenger. */
+import { ehNativo, notificarNativo, pedirPermissaoNativa } from "./nativo";
+
 const CHAVE_PEDIDO = "msn-notificacao-pedida";
 
 export function suportaNotificacao() {
+  if (ehNativo()) return true;
   return typeof window !== "undefined" && "Notification" in window;
 }
 
 export function permissaoAtual(): NotificationPermission | "indisponivel" {
+  if (ehNativo()) return "granted";
   if (!suportaNotificacao()) return "indisponivel";
   return Notification.permission;
 }
@@ -21,6 +25,10 @@ export function marcarPerguntou() {
 }
 
 export async function pedirPermissao(): Promise<NotificationPermission | "indisponivel"> {
+  if (ehNativo()) {
+    marcarPerguntou();
+    return (await pedirPermissaoNativa()) ? "granted" : "denied";
+  }
   if (!suportaNotificacao()) return "indisponivel";
   marcarPerguntou();
   try {
@@ -39,10 +47,16 @@ type Extras = { icone?: string; tag?: string; sempre?: boolean; urgente?: boolea
  */
 export function mostrarNotificacao(titulo: string, corpo: string, extras: Extras | string = {}) {
   const op: Extras = typeof extras === "string" ? { icone: extras } : extras;
-  if (!suportaNotificacao() || Notification.permission !== "granted") return;
   if (!op.sempre && typeof document !== "undefined" && document.visibilityState === "visible") {
     return;
   }
+
+  if (ehNativo()) {
+    void notificarNativo(titulo, corpo, op.urgente ?? false);
+    return;
+  }
+
+  if (!suportaNotificacao() || Notification.permission !== "granted") return;
 
   const opcoes: NotificationOptions & { vibrate?: number[]; renotify?: boolean } = {
     body: corpo,
