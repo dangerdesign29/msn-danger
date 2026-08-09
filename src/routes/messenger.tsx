@@ -15,6 +15,7 @@ import { WinksModal } from "@/components/msn/WinksModal";
 import { supabase } from "@/integrations/supabase/client";
 import { enviarAnexo } from "@/lib/anexos";
 import { estaOnline, lerConversa, lerListas, salvarConversa, salvarListas } from "@/lib/cache";
+import { esvaziarFila, enfileirar, lerFila } from "@/lib/fila";
 import {
   jaPerguntou,
   mostrarNotificacao,
@@ -64,6 +65,7 @@ export const Route = createFileRoute("/messenger")({
 });
 
 const PAGINA = 30;
+const REACOES_RAPIDAS = ["👍", "😂", "😮", "😢", "❤️", "🔥"] as const;
 
 type Toast = { id: number; titulo: string; texto: string };
 type Prompt = { titulo: string; label: string; valor: string; onOk: (v: string) => void };
@@ -106,6 +108,10 @@ function Messenger() {
   const [digitando, setDigitando] = useState<string | null>(null);
   const [grupoAberto, setGrupoAberto] = useState<Grupo | null>(null);
   const [pushAtivo, setPushAtivo] = useState(false);
+  const [respondendo, setRespondendo] = useState<Mensagem | null>(null);
+  const [reacoes, setReacoes] = useState<Record<string, { emoji: string; usuario_id: string }[]>>({});
+  const [barraReacao, setBarraReacao] = useState<string | null>(null);
+  const [naFila, setNaFila] = useState(0);
 
   const ativoRef = useRef<Conversa | null>(null);
   ativoRef.current = ativo;
@@ -520,9 +526,98 @@ function Messenger() {
     };
   }, []);
 
+  // ---------- fila de envio (mensagens feitas sem internet) ----------
+  useEffect(() => {
+    if (!userId) return;
+    setNaFila(lerFila().length);
+    let ocupado = false;
+    const tentar = async () => {
+      if (ocupado || !estaOnline() || lerFila().length === 0) return;
+      ocupado = true;
+      const enviadas = await esvaziarFila(userId);
+      ocupado = false;
+      setNaFila(lerFila().length);
+      if (enviadas > 0) {
+        playSound("send");
+        notificar("Mensagens enviadas", `${enviadas} mensagem(ns) da fila foram entregues.`);
+        setMensagens((m) => m.filter((x) => !x.pendente));
+        const atual = ativoRef.current;
+        if (atual) await carregarMensagens(userId, atual);
+      }
+    };
+    void tentar();
+    window.addEventListener("online", tentar);
+    const intervalo = setInterval(() => void tentar(), 10000);
+    return () => {
+      window.removeEventListener("online", tentar);
+      clearInterval(intervalo);
+    };
+  }, [userId, notificar, carregarMensagens]);
+
   useEffect(() => {
     if (ativo && mensagens.length > 0 && !buscandoMsg) salvarConversa(ativo, mensagens);
   }, [ativo, mensagens, buscandoMsg]);
+
+  // ---------- reações ----------
+  const idsReais = useMemo(
+    () => mensagens.filter((m) => !m.pendente).map((m) => m.id),
+    [mensagens],
+  );
+  const chaveIds = idsReais.join(",");
+
+  const carregarReacoes = useCallback(async (ids: string[]) => {
+    if (ids.length === 0) {
+      setReacoes({});
+      return;
+    }
+    const { data } = await supabase
+      .from("reacoes")
+      .select("mensagem_id, emoji, usuario_id")
+      .in("mensagem_id", ids);
+    const mapa: Record<string, { emoji: string; usuario_id: string }[]> = {};
+    for (const r of data ?? []) {
+      (mapa[r.mensagem_id] ??= []).push({ emoji: r.emoji, usuario_id: r.usuario_id });
+    }
+    setReacoes(mapa);
+  }, []);
+
+  useEffect(() => {
+    const ids = chaveIds ? chaveIds.split(",") : [];
+    void carregarReacoes(ids);
+    if (ids.length === 0) return;
+    const canal = supabase
+      .channel("msn-reacoes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "reacoes" }, () => {
+        void carregarReacoes(ids);
+      })
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(canal);
+    };
+  }, [chaveIds, carregarReacoes]);
+
+  async function alternarReacao(mensagemId: string, emoji: string) {
+    if (!userId) return;
+    setBarraReacao(null);
+    vibrar(PADROES.clique);
+    const minhas = (reacoes[mensagemId] ?? []).filter(
+      (r) => r.usuario_id === userId && r.emoji === emoji,
+    );
+    if (minhas.length > 0) {
+      await supabase
+        .from("reacoes")
+        .delete()
+        .eq("mensagem_id", mensagemId)
+        .eq("usuario_id", userId)
+        .eq("emoji", emoji);
+    } else {
+      await supabase
+        .from("reacoes")
+        .insert({ mensagem_id: mensagemId, usuario_id: userId, emoji });
+      playSound("wink");
+    }
+    await carregarReacoes(chaveIds ? chaveIds.split(",") : []);
+  }
 
   // ---------- "digitando…" em tempo real ----------
   useEffect(() => {
@@ -645,9 +740,46 @@ function Messenger() {
     conteudo: string,
     tipo: string,
     anexo?: { caminho: string; nome: string; tipo: string; tamanho: number },
+    respondeA?: string | null,
   ) {
     if (!userId || !destino) return;
-    const { data } = await supabase
+    // Sem internet: guarda na fila local e mostra como pendente.
+    if (!estaOnline() && !anexo) {
+      const item = enfileirar({
+        conversaTipo: destino.tipo,
+        conversaId: destino.id,
+        mensagem: conteudo,
+        tipo,
+        responde_a: respondeA ?? null,
+      });
+      setNaFila(lerFila().length);
+      if (ativoRef.current?.id === destino.id) {
+        setMensagens((m) => [
+          ...m,
+          {
+            id: item.id,
+            remetente_id: userId,
+            destinatario_id: destino.tipo === "dm" ? destino.id : null,
+            grupo_id: destino.tipo === "grupo" ? destino.id : null,
+            mensagem: conteudo,
+            tipo,
+            lida: false,
+            enviada_em: item.criado_em,
+            lida_em: null,
+            entregue_em: null,
+            anexo_url: null,
+            anexo_nome: null,
+            anexo_tipo: null,
+            anexo_tamanho: null,
+            responde_a: respondeA ?? null,
+            pendente: true,
+          },
+        ]);
+      }
+      return;
+    }
+
+    const { data, error } = await supabase
       .from("mensagens")
       .insert({
         remetente_id: userId,
@@ -655,6 +787,7 @@ function Messenger() {
         grupo_id: destino.tipo === "grupo" ? destino.id : null,
         mensagem: conteudo,
         tipo,
+        responde_a: respondeA ?? null,
         anexo_url: anexo?.caminho ?? null,
         anexo_nome: anexo?.nome ?? null,
         anexo_tipo: anexo?.tipo ?? null,
@@ -662,6 +795,18 @@ function Messenger() {
       })
       .select()
       .maybeSingle();
+    if (error && !anexo) {
+      enfileirar({
+        conversaTipo: destino.tipo,
+        conversaId: destino.id,
+        mensagem: conteudo,
+        tipo,
+        responde_a: respondeA ?? null,
+      });
+      setNaFila(lerFila().length);
+      notificar("Sem conexão", "Sua mensagem ficou na fila e sai sozinha quando a internet voltar.");
+      return;
+    }
     if (data && ativoRef.current?.id === destino.id) {
       setMensagens((m) => [...m, data as unknown as Mensagem]);
     }
@@ -683,9 +828,11 @@ function Messenger() {
     const conteudo = texto.trim();
     if (!conteudo) return;
     setTexto("");
+    const alvo = respondendo?.id ?? null;
+    setRespondendo(null);
     if (pararDigitarRef.current) clearTimeout(pararDigitarRef.current);
     avisarDigitando(false);
-    await enviarEm(ativo, conteudo, "texto");
+    await enviarEm(ativo, conteudo, "texto", undefined, alvo);
   }
 
   async function enviarArquivo(arquivo: File | Blob, nome?: string) {
@@ -812,9 +959,18 @@ function Messenger() {
 
   function selo(m: Mensagem) {
     if (m.remetente_id !== userId || m.grupo_id) return null;
+    if (m.pendente) return <span className="msn-selo" title="Na fila, sem internet">🕒</span>;
     if (m.lida) return <span className="msn-selo lida" title="Lida">✓✓</span>;
     if (m.entregue_em) return <span className="msn-selo" title="Entregue">✓✓</span>;
     return <span className="msn-selo" title="Enviada">✓</span>;
+  }
+
+  function resumoMsg(m: Mensagem) {
+    if (m.tipo === "texto") return m.mensagem.slice(0, 90);
+    if (m.tipo === "anexo") return `📎 ${m.anexo_nome ?? "arquivo"}`;
+    if (m.tipo === "drawing") return "🎨 Desenho";
+    if (m.tipo === "wink") return "⚡ Wink";
+    return "📳 Toque de atenção";
   }
 
   return (
@@ -824,6 +980,12 @@ function Messenger() {
       {!online && (
         <div className="msn-offline" role="status">
           📴 Sem internet — mostrando conversas salvas no aparelho
+          {naFila > 0 && ` · ${naFila} mensagem(ns) na fila`}
+        </div>
+      )}
+      {online && naFila > 0 && (
+        <div className="msn-offline" role="status">
+          ⏳ Enviando {naFila} mensagem(ns) que ficaram na fila…
         </div>
       )}
       {online && pushAtivo && <span className="sr-only">Notificações push ativas</span>}
@@ -1039,8 +1201,28 @@ function Messenger() {
                 {mensagens.map((m) => {
                   const meu = m.remetente_id === userId;
                   const w = m.tipo === "wink" ? acharWink(m.mensagem) : undefined;
+                  const citada = m.responde_a
+                    ? mensagens.find((x) => x.id === m.responde_a)
+                    : undefined;
+                  const reagidas = reacoes[m.id] ?? [];
+                  const agrupadas = Array.from(
+                    reagidas.reduce((mapa, r) => {
+                      const atual = mapa.get(r.emoji) ?? { total: 0, minha: false };
+                      mapa.set(r.emoji, {
+                        total: atual.total + 1,
+                        minha: atual.minha || r.usuario_id === userId,
+                      });
+                      return mapa;
+                    }, new Map<string, { total: number; minha: boolean }>()),
+                  );
                   return (
-                    <div key={m.id} className={`msn-msg ${meu ? "sent" : "received"}`}>
+                    <div key={m.id} className={`msn-msg ${meu ? "sent" : "received"} ${m.pendente ? "pendente" : ""}`}>
+                      {citada && (
+                        <div className="msn-citacao">
+                          <strong>{citada.remetente_id === userId ? "Você" : ativo.nome}</strong>
+                          <span>{resumoMsg(citada)}</span>
+                        </div>
+                      )}
                       {m.tipo === "wink" && (
                         <div className="text-center">
                           <div className={`text-[40px] msn-anim-${w?.anim ?? "zoom"}`}>{w?.emoji ?? "⚡"}</div>
@@ -1068,9 +1250,57 @@ function Messenger() {
                         />
                       )}
                       {m.tipo === "texto" && <div>{formatarMensagem(m.mensagem)}</div>}
+                      {agrupadas.length > 0 && (
+                        <div className="msn-reacoes">
+                          {agrupadas.map(([emoji, info]) => (
+                            <button
+                              key={emoji}
+                              type="button"
+                              className={`msn-reacao ${info.minha ? "minha" : ""}`}
+                              onClick={() => void alternarReacao(m.id, emoji)}
+                            >
+                              {emoji} {info.total}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       <div className="msn-msg-time">
                         {formatarHora(m.enviada_em)} {selo(m)}
                       </div>
+                      {!m.pendente && (
+                        <div className="msn-msg-acoes">
+                          <button
+                            type="button"
+                            title="Responder"
+                            onClick={() => {
+                              setRespondendo(m);
+                              vibrar(PADROES.clique);
+                            }}
+                          >
+                            ↩
+                          </button>
+                          <button
+                            type="button"
+                            title="Reagir"
+                            onClick={() => setBarraReacao((v) => (v === m.id ? null : m.id))}
+                          >
+                            😊
+                          </button>
+                          {barraReacao === m.id && (
+                            <div className="msn-reacao-barra">
+                              {REACOES_RAPIDAS.map((emoji) => (
+                                <button
+                                  key={emoji}
+                                  type="button"
+                                  onClick={() => void alternarReacao(m.id, emoji)}
+                                >
+                                  {emoji}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -1148,6 +1378,22 @@ function Messenger() {
                       <i />
                     </span>
                     {digitando} está digitando…
+                  </div>
+                )}
+
+                {respondendo && (
+                  <div className="msn-respondendo">
+                    <span className="min-w-0 flex-1 truncate">
+                      ↩ Respondendo: {resumoMsg(respondendo)}
+                    </span>
+                    <button
+                      type="button"
+                      className="msn-btn-small"
+                      aria-label="Cancelar resposta"
+                      onClick={() => setRespondendo(null)}
+                    >
+                      ✕
+                    </button>
                   </div>
                 )}
 

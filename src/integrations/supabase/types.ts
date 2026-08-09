@@ -109,6 +109,7 @@ export type Database = {
           lida_em: string | null
           mensagem: string
           remetente_id: string
+          responde_a: string | null
           tipo: string
         }
         Insert: {
@@ -125,6 +126,7 @@ export type Database = {
           lida_em?: string | null
           mensagem: string
           remetente_id: string
+          responde_a?: string | null
           tipo?: string
         }
         Update: {
@@ -141,6 +143,7 @@ export type Database = {
           lida_em?: string | null
           mensagem?: string
           remetente_id?: string
+          responde_a?: string | null
           tipo?: string
         }
         Relationships: [
@@ -149,6 +152,13 @@ export type Database = {
             columns: ["grupo_id"]
             isOneToOne: false
             referencedRelation: "grupos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mensagens_responde_a_fkey"
+            columns: ["responde_a"]
+            isOneToOne: false
+            referencedRelation: "mensagens"
             referencedColumns: ["id"]
           },
         ]
@@ -215,6 +225,38 @@ export type Database = {
           usuario_id?: string
         }
         Relationships: []
+      }
+      reacoes: {
+        Row: {
+          criado_em: string
+          emoji: string
+          id: string
+          mensagem_id: string
+          usuario_id: string
+        }
+        Insert: {
+          criado_em?: string
+          emoji: string
+          id?: string
+          mensagem_id: string
+          usuario_id: string
+        }
+        Update: {
+          criado_em?: string
+          emoji?: string
+          id?: string
+          mensagem_id?: string
+          usuario_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reacoes_mensagem_id_fkey"
+            columns: ["mensagem_id"]
+            isOneToOne: false
+            referencedRelation: "mensagens"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {

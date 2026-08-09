@@ -943,3 +943,108 @@
   0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
   30% { transform: translateY(-4px); opacity: 1; }
 }
+
+/* ---------- Responder, reações e fila offline ---------- */
+.msn-msg {
+  position: relative;
+}
+.msn-msg.pendente {
+  opacity: 0.7;
+}
+.msn-citacao {
+  display: block;
+  margin-bottom: 4px;
+  border-left: 3px solid var(--msn-primaria, #0054e3);
+  background: rgb(0 0 0 / 5%);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 11px;
+  line-height: 1.3;
+}
+.msn-citacao strong {
+  display: block;
+  color: var(--msn-primaria, #0054e3);
+}
+.msn-citacao span {
+  display: block;
+  opacity: 0.85;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.msn-reacoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 4px;
+}
+.msn-reacao {
+  border: 1px solid #cfd8e3;
+  background: #fff;
+  border-radius: 999px;
+  padding: 0 6px;
+  font-size: 11px;
+  line-height: 18px;
+  cursor: pointer;
+}
+.msn-reacao.minha {
+  border-color: var(--msn-primaria, #0054e3);
+  background: #e8f0fe;
+}
+.msn-msg-acoes {
+  position: absolute;
+  top: -10px;
+  right: 4px;
+  display: none;
+  gap: 2px;
+}
+.msn-msg:hover .msn-msg-acoes,
+.msn-msg:focus-within .msn-msg-acoes {
+  display: flex;
+}
+.msn-msg-acoes > button {
+  width: 22px;
+  height: 22px;
+  border: 1px solid #cfd8e3;
+  border-radius: 50%;
+  background: #fff;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+.msn-reacao-barra {
+  position: absolute;
+  top: -34px;
+  right: 0;
+  z-index: 40;
+  display: flex;
+  gap: 2px;
+  border: 1px solid #cfd8e3;
+  border-radius: 999px;
+  background: #fff;
+  padding: 3px 5px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 20%);
+}
+.msn-reacao-barra > button {
+  font-size: 16px;
+  line-height: 1;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+.msn-reacao-barra > button:hover {
+  transform: scale(1.35);
+}
+.msn-respondendo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  border-left: 3px solid var(--msn-primaria, #0054e3);
+  background: #eef4ff;
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 11px;
+  color: #333;
+}
