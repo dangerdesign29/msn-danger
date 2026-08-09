@@ -712,9 +712,46 @@ function Messenger() {
     conteudo: string,
     tipo: string,
     anexo?: { caminho: string; nome: string; tipo: string; tamanho: number },
+    respondeA?: string | null,
   ) {
     if (!userId || !destino) return;
-    const { data } = await supabase
+    // Sem internet: guarda na fila local e mostra como pendente.
+    if (!estaOnline() && !anexo) {
+      const item = enfileirar({
+        conversaTipo: destino.tipo,
+        conversaId: destino.id,
+        mensagem: conteudo,
+        tipo,
+        responde_a: respondeA ?? null,
+      });
+      setNaFila(lerFila().length);
+      if (ativoRef.current?.id === destino.id) {
+        setMensagens((m) => [
+          ...m,
+          {
+            id: item.id,
+            remetente_id: userId,
+            destinatario_id: destino.tipo === "dm" ? destino.id : null,
+            grupo_id: destino.tipo === "grupo" ? destino.id : null,
+            mensagem: conteudo,
+            tipo,
+            lida: false,
+            enviada_em: item.criado_em,
+            lida_em: null,
+            entregue_em: null,
+            anexo_url: null,
+            anexo_nome: null,
+            anexo_tipo: null,
+            anexo_tamanho: null,
+            responde_a: respondeA ?? null,
+            pendente: true,
+          },
+        ]);
+      }
+      return;
+    }
+
+    const { data, error } = await supabase
       .from("mensagens")
       .insert({
         remetente_id: userId,
@@ -722,6 +759,7 @@ function Messenger() {
         grupo_id: destino.tipo === "grupo" ? destino.id : null,
         mensagem: conteudo,
         tipo,
+        responde_a: respondeA ?? null,
         anexo_url: anexo?.caminho ?? null,
         anexo_nome: anexo?.nome ?? null,
         anexo_tipo: anexo?.tipo ?? null,
@@ -729,6 +767,18 @@ function Messenger() {
       })
       .select()
       .maybeSingle();
+    if (error && !anexo) {
+      enfileirar({
+        conversaTipo: destino.tipo,
+        conversaId: destino.id,
+        mensagem: conteudo,
+        tipo,
+        responde_a: respondeA ?? null,
+      });
+      setNaFila(lerFila().length);
+      notificar("Sem conexão", "Sua mensagem ficou na fila e sai sozinha quando a internet voltar.");
+      return;
+    }
     if (data && ativoRef.current?.id === destino.id) {
       setMensagens((m) => [...m, data as unknown as Mensagem]);
     }
@@ -750,9 +800,11 @@ function Messenger() {
     const conteudo = texto.trim();
     if (!conteudo) return;
     setTexto("");
+    const alvo = respondendo?.id ?? null;
+    setRespondendo(null);
     if (pararDigitarRef.current) clearTimeout(pararDigitarRef.current);
     avisarDigitando(false);
-    await enviarEm(ativo, conteudo, "texto");
+    await enviarEm(ativo, conteudo, "texto", undefined, alvo);
   }
 
   async function enviarArquivo(arquivo: File | Blob, nome?: string) {
