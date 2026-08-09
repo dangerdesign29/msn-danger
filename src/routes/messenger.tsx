@@ -15,6 +15,7 @@ import { WinksModal } from "@/components/msn/WinksModal";
 import { supabase } from "@/integrations/supabase/client";
 import { enviarAnexo } from "@/lib/anexos";
 import { estaOnline, lerConversa, lerListas, salvarConversa, salvarListas } from "@/lib/cache";
+import { esvaziarFila, enfileirar, lerFila } from "@/lib/fila";
 import {
   jaPerguntou,
   mostrarNotificacao,
@@ -64,6 +65,7 @@ export const Route = createFileRoute("/messenger")({
 });
 
 const PAGINA = 30;
+const REACOES_RAPIDAS = ["👍", "😂", "😮", "😢", "❤️", "🔥"] as const;
 
 type Toast = { id: number; titulo: string; texto: string };
 type Prompt = { titulo: string; label: string; valor: string; onOk: (v: string) => void };
@@ -106,6 +108,10 @@ function Messenger() {
   const [digitando, setDigitando] = useState<string | null>(null);
   const [grupoAberto, setGrupoAberto] = useState<Grupo | null>(null);
   const [pushAtivo, setPushAtivo] = useState(false);
+  const [respondendo, setRespondendo] = useState<Mensagem | null>(null);
+  const [reacoes, setReacoes] = useState<Record<string, { emoji: string; usuario_id: string }[]>>({});
+  const [barraReacao, setBarraReacao] = useState<string | null>(null);
+  const [naFila, setNaFila] = useState(0);
 
   const ativoRef = useRef<Conversa | null>(null);
   ativoRef.current = ativo;
