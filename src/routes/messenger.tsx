@@ -1381,10 +1381,25 @@ function Messenger() {
                   </div>
                 )}
 
+                {respondendo && (
+                  <div className="msn-respondendo">
+                    <span className="min-w-0 flex-1 truncate">
+                      ↩ Respondendo: {resumoMsg(respondendo)}
+                    </span>
+                    <button
+                      type="button"
+                      className="msn-btn-small"
+                      aria-label="Cancelar resposta"
+                      onClick={() => setRespondendo(null)}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+
                 <div className="flex gap-1.5">
                   <textarea
                     className="msn-textarea"
-                    ref={undefined}
                     placeholder="Digite sua mensagem..."
                     aria-label="Mensagem"
                     value={texto}
