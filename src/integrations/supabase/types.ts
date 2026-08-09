@@ -221,7 +221,6 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      adicionar_contato: { Args: { _email: string }; Returns: string }
       adicionar_contato_id: { Args: { _alvo: string }; Returns: string }
       adicionar_membro: {
         Args: { _grupo: string; _usuario: string }
@@ -238,12 +237,10 @@ export type Database = {
           status: string
         }[]
       }
-      compartilha_grupo: { Args: { _outro: string }; Returns: boolean }
       criar_grupo: {
         Args: { _membros: string[]; _nome: string }
         Returns: string
       }
-      eh_meu_contato: { Args: { _outro: string }; Returns: boolean }
       membros_grupo: {
         Args: { _grupo: string }
         Returns: {
@@ -255,7 +252,6 @@ export type Database = {
         }[]
       }
       sair_grupo: { Args: { _grupo: string }; Returns: string }
-      sou_membro: { Args: { _grupo: string }; Returns: boolean }
     }
     Enums: {
       [_ in never]: never
