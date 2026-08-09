@@ -959,9 +959,18 @@ function Messenger() {
 
   function selo(m: Mensagem) {
     if (m.remetente_id !== userId || m.grupo_id) return null;
+    if (m.pendente) return <span className="msn-selo" title="Na fila, sem internet">🕒</span>;
     if (m.lida) return <span className="msn-selo lida" title="Lida">✓✓</span>;
     if (m.entregue_em) return <span className="msn-selo" title="Entregue">✓✓</span>;
     return <span className="msn-selo" title="Enviada">✓</span>;
+  }
+
+  function resumoMsg(m: Mensagem) {
+    if (m.tipo === "texto") return m.mensagem.slice(0, 90);
+    if (m.tipo === "anexo") return `📎 ${m.anexo_nome ?? "arquivo"}`;
+    if (m.tipo === "drawing") return "🎨 Desenho";
+    if (m.tipo === "wink") return "⚡ Wink";
+    return "📳 Toque de atenção";
   }
 
   return (
