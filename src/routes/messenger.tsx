@@ -526,6 +526,34 @@ function Messenger() {
     };
   }, []);
 
+  // ---------- fila de envio (mensagens feitas sem internet) ----------
+  useEffect(() => {
+    if (!userId) return;
+    setNaFila(lerFila().length);
+    let ocupado = false;
+    const tentar = async () => {
+      if (ocupado || !estaOnline() || lerFila().length === 0) return;
+      ocupado = true;
+      const enviadas = await esvaziarFila(userId);
+      ocupado = false;
+      setNaFila(lerFila().length);
+      if (enviadas > 0) {
+        playSound("send");
+        notificar("Mensagens enviadas", `${enviadas} mensagem(ns) da fila foram entregues.`);
+        setMensagens((m) => m.filter((x) => !x.pendente));
+        const atual = ativoRef.current;
+        if (atual) await carregarMensagens(userId, atual);
+      }
+    };
+    void tentar();
+    window.addEventListener("online", tentar);
+    const intervalo = setInterval(() => void tentar(), 10000);
+    return () => {
+      window.removeEventListener("online", tentar);
+      clearInterval(intervalo);
+    };
+  }, [userId, notificar, carregarMensagens]);
+
   useEffect(() => {
     if (ativo && mensagens.length > 0 && !buscandoMsg) salvarConversa(ativo, mensagens);
   }, [ativo, mensagens, buscandoMsg]);
