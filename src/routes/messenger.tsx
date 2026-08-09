@@ -530,6 +530,67 @@ function Messenger() {
     if (ativo && mensagens.length > 0 && !buscandoMsg) salvarConversa(ativo, mensagens);
   }, [ativo, mensagens, buscandoMsg]);
 
+  // ---------- reações ----------
+  const idsReais = useMemo(
+    () => mensagens.filter((m) => !m.pendente).map((m) => m.id),
+    [mensagens],
+  );
+  const chaveIds = idsReais.join(",");
+
+  const carregarReacoes = useCallback(async (ids: string[]) => {
+    if (ids.length === 0) {
+      setReacoes({});
+      return;
+    }
+    const { data } = await supabase
+      .from("reacoes")
+      .select("mensagem_id, emoji, usuario_id")
+      .in("mensagem_id", ids);
+    const mapa: Record<string, { emoji: string; usuario_id: string }[]> = {};
+    for (const r of data ?? []) {
+      (mapa[r.mensagem_id] ??= []).push({ emoji: r.emoji, usuario_id: r.usuario_id });
+    }
+    setReacoes(mapa);
+  }, []);
+
+  useEffect(() => {
+    const ids = chaveIds ? chaveIds.split(",") : [];
+    void carregarReacoes(ids);
+    if (ids.length === 0) return;
+    const canal = supabase
+      .channel("msn-reacoes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "reacoes" }, () => {
+        void carregarReacoes(ids);
+      })
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(canal);
+    };
+  }, [chaveIds, carregarReacoes]);
+
+  async function alternarReacao(mensagemId: string, emoji: string) {
+    if (!userId) return;
+    setBarraReacao(null);
+    vibrar(PADROES.clique);
+    const minhas = (reacoes[mensagemId] ?? []).filter(
+      (r) => r.usuario_id === userId && r.emoji === emoji,
+    );
+    if (minhas.length > 0) {
+      await supabase
+        .from("reacoes")
+        .delete()
+        .eq("mensagem_id", mensagemId)
+        .eq("usuario_id", userId)
+        .eq("emoji", emoji);
+    } else {
+      await supabase
+        .from("reacoes")
+        .insert({ mensagem_id: mensagemId, usuario_id: userId, emoji });
+      playSound("wink");
+    }
+    await carregarReacoes(chaveIds ? chaveIds.split(",") : []);
+  }
+
   // ---------- "digitando…" em tempo real ----------
   useEffect(() => {
     if (!userId || !ativo) {
