@@ -1384,6 +1384,7 @@ function Messenger() {
                 <div className="flex gap-1.5">
                   <textarea
                     className="msn-textarea"
+                    ref={undefined}
                     placeholder="Digite sua mensagem..."
                     aria-label="Mensagem"
                     value={texto}
