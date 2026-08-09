@@ -33,6 +33,9 @@ export type Mensagem = {
   anexo_nome: string | null;
   anexo_tipo: string | null;
   anexo_tamanho: number | null;
+  responde_a?: string | null;
+  /** Mensagem ainda na fila local (sem internet). */
+  pendente?: boolean;
 };
 
 export type Grupo = {
