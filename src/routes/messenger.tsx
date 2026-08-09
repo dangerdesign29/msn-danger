@@ -1195,8 +1195,28 @@ function Messenger() {
                 {mensagens.map((m) => {
                   const meu = m.remetente_id === userId;
                   const w = m.tipo === "wink" ? acharWink(m.mensagem) : undefined;
+                  const citada = m.responde_a
+                    ? mensagens.find((x) => x.id === m.responde_a)
+                    : undefined;
+                  const reagidas = reacoes[m.id] ?? [];
+                  const agrupadas = Array.from(
+                    reagidas.reduce((mapa, r) => {
+                      const atual = mapa.get(r.emoji) ?? { total: 0, minha: false };
+                      mapa.set(r.emoji, {
+                        total: atual.total + 1,
+                        minha: atual.minha || r.usuario_id === userId,
+                      });
+                      return mapa;
+                    }, new Map<string, { total: number; minha: boolean }>()),
+                  );
                   return (
-                    <div key={m.id} className={`msn-msg ${meu ? "sent" : "received"}`}>
+                    <div key={m.id} className={`msn-msg ${meu ? "sent" : "received"} ${m.pendente ? "pendente" : ""}`}>
+                      {citada && (
+                        <div className="msn-citacao">
+                          <strong>{citada.remetente_id === userId ? "Você" : ativo.nome}</strong>
+                          <span>{resumoMsg(citada)}</span>
+                        </div>
+                      )}
                       {m.tipo === "wink" && (
                         <div className="text-center">
                           <div className={`text-[40px] msn-anim-${w?.anim ?? "zoom"}`}>{w?.emoji ?? "⚡"}</div>
@@ -1224,9 +1244,57 @@ function Messenger() {
                         />
                       )}
                       {m.tipo === "texto" && <div>{formatarMensagem(m.mensagem)}</div>}
+                      {agrupadas.length > 0 && (
+                        <div className="msn-reacoes">
+                          {agrupadas.map(([emoji, info]) => (
+                            <button
+                              key={emoji}
+                              type="button"
+                              className={`msn-reacao ${info.minha ? "minha" : ""}`}
+                              onClick={() => void alternarReacao(m.id, emoji)}
+                            >
+                              {emoji} {info.total}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       <div className="msn-msg-time">
                         {formatarHora(m.enviada_em)} {selo(m)}
                       </div>
+                      {!m.pendente && (
+                        <div className="msn-msg-acoes">
+                          <button
+                            type="button"
+                            title="Responder"
+                            onClick={() => {
+                              setRespondendo(m);
+                              vibrar(PADROES.clique);
+                            }}
+                          >
+                            ↩
+                          </button>
+                          <button
+                            type="button"
+                            title="Reagir"
+                            onClick={() => setBarraReacao((v) => (v === m.id ? null : m.id))}
+                          >
+                            😊
+                          </button>
+                          {barraReacao === m.id && (
+                            <div className="msn-reacao-barra">
+                              {REACOES_RAPIDAS.map((emoji) => (
+                                <button
+                                  key={emoji}
+                                  type="button"
+                                  onClick={() => void alternarReacao(m.id, emoji)}
+                                >
+                                  {emoji}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
