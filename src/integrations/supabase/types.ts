@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      chamada_sinais: {
+        Row: {
+          criado_em: string
+          destinatario_id: string
+          expira_em: string
+          id: string
+          payload: Json
+          remetente_id: string
+          tipo: string
+        }
+        Insert: {
+          criado_em?: string
+          destinatario_id: string
+          expira_em?: string
+          id?: string
+          payload: Json
+          remetente_id: string
+          tipo: string
+        }
+        Update: {
+          criado_em?: string
+          destinatario_id?: string
+          expira_em?: string
+          id?: string
+          payload?: Json
+          remetente_id?: string
+          tipo?: string
+        }
+        Relationships: []
+      }
       contatos: {
         Row: {
           apelido: string | null
