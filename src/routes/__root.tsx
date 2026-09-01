@@ -80,12 +80,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { title: "MSN Messenger — Entrar na sua conta" },
       {
         name: "description",
-        content: "Reviva o Windows Live Messenger: entre com seu e-mail, adicione contatos e converse com winks, toques e emoticons clássicos.",
+        content:
+          "Reviva o Windows Live Messenger: entre com seu e-mail, adicione contatos e converse com winks, toques e emoticons clássicos.",
       },
       { property: "og:title", content: "MSN Messenger — Entrar na sua conta" },
       {
         property: "og:description",
-        content: "Reviva o Windows Live Messenger: entre com seu e-mail, adicione contatos e converse com winks, toques e emoticons clássicos.",
+        content:
+          "Reviva o Windows Live Messenger: entre com seu e-mail, adicione contatos e converse com winks, toques e emoticons clássicos.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -96,9 +98,21 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "apple-mobile-web-app-title", content: "MSN" },
       { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
       { name: "twitter:title", content: "MSN Messenger — Entrar na sua conta" },
-      { name: "twitter:description", content: "Reviva o Windows Live Messenger: entre com seu e-mail, adicione contatos e converse com winks, toques e emoticons clássicos." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/e2b4c156-47be-4300-9cd5-679315b09002/id-preview-e6fa739a--f27a9149-1f73-4632-8e56-69a299a079ae.lovable.app-1785893933539.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/e2b4c156-47be-4300-9cd5-679315b09002/id-preview-e6fa739a--f27a9149-1f73-4632-8e56-69a299a079ae.lovable.app-1785893933539.png" },
+      {
+        name: "twitter:description",
+        content:
+          "Reviva o Windows Live Messenger: entre com seu e-mail, adicione contatos e converse com winks, toques e emoticons clássicos.",
+      },
+      {
+        property: "og:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/e2b4c156-47be-4300-9cd5-679315b09002/id-preview-e6fa739a--f27a9149-1f73-4632-8e56-69a299a079ae.lovable.app-1785893933539.png",
+      },
+      {
+        name: "twitter:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/e2b4c156-47be-4300-9cd5-679315b09002/id-preview-e6fa739a--f27a9149-1f73-4632-8e56-69a299a079ae.lovable.app-1785893933539.png",
+      },
     ],
     links: [
       {

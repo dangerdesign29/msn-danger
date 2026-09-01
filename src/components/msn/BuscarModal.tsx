@@ -169,11 +169,7 @@ export function BuscarModal({ onClose, onAdicionado, onGrupoCriado }: Props) {
                     <div className="truncate text-[10px] text-[#777]">{u.email}</div>
                   </div>
                   {modoGrupo ? (
-                    <button
-                      type="button"
-                      className="msn-btn-small"
-                      onClick={() => alternar(u)}
-                    >
+                    <button type="button" className="msn-btn-small" onClick={() => alternar(u)}>
                       {marcado ? "✓ Escolhido" : "+ Incluir"}
                     </button>
                   ) : (

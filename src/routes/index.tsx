@@ -17,7 +17,8 @@ export const Route = createFileRoute("/")({
       { property: "og:title", content: "MSN Messenger — Entrar na sua conta" },
       {
         property: "og:description",
-        content: "Reviva o Windows Live Messenger: entre com seu e-mail, adicione contatos e converse com winks, toques e emoticons clássicos.",
+        content:
+          "Reviva o Windows Live Messenger: entre com seu e-mail, adicione contatos e converse com winks, toques e emoticons clássicos.",
       },
     ],
   }),

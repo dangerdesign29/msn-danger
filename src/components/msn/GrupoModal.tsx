@@ -101,7 +101,11 @@ export function GrupoModal({ grupo, contatos, onClose, onMudou, onSaiu }: Props)
                 <span className="min-w-0 flex-1 truncate text-[12px] text-[#333]">
                   {c.apelido ?? c.nome}
                 </span>
-                <button type="button" className="msn-btn-small" onClick={() => void adicionar(c.id)}>
+                <button
+                  type="button"
+                  className="msn-btn-small"
+                  onClick={() => void adicionar(c.id)}
+                >
                   + Incluir
                 </button>
               </div>

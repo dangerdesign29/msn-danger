@@ -11,7 +11,8 @@ type Props = {
 export function Anexo({ caminho, nome, tipo, tamanho }: Props) {
   const [url, setUrl] = useState<string | null>(null);
   const [baixando, setBaixando] = useState(false);
-  const previa = tipo.startsWith("image/") || tipo.startsWith("video/") || tipo.startsWith("audio/");
+  const previa =
+    tipo.startsWith("image/") || tipo.startsWith("video/") || tipo.startsWith("audio/");
 
   useEffect(() => {
     let vivo = true;
