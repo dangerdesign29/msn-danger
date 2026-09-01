@@ -93,7 +93,14 @@ export function JogoOnline({ userId, sessao, registrarSinal, onClose }: Props) {
         setTabuleiro(novo);
         setMinhaVez(true);
         const v = vencedor(novo);
-        if (v) setResultado(v === "empate" ? "Deu velha! 🤝" : v === meuSimbolo ? "Você venceu! 🏆" : "Você perdeu 😢");
+        if (v)
+          setResultado(
+            v === "empate"
+              ? "Deu velha! 🤝"
+              : v === meuSimbolo
+                ? "Você venceu! 🏆"
+                : "Você perdeu 😢",
+          );
       } else if (sessao.jogo === "pedra") {
         setEscolhaDele(d["escolha"] as string);
       } else if (sessao.jogo === "memoria") {
@@ -143,7 +150,10 @@ export function JogoOnline({ userId, sessao, registrarSinal, onClose }: Props) {
     playSound("send");
     enviar({ tabuleiro: novo });
     const v = vencedor(novo);
-    if (v) setResultado(v === "empate" ? "Deu velha! 🤝" : v === meuSimbolo ? "Você venceu! 🏆" : "Você perdeu 😢");
+    if (v)
+      setResultado(
+        v === "empate" ? "Deu velha! 🤝" : v === meuSimbolo ? "Você venceu! 🏆" : "Você perdeu 😢",
+      );
   }
 
   function reiniciarVelha() {
